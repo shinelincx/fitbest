@@ -35,7 +35,7 @@ class DeploymentTest(unittest.TestCase):
             bin_dir = path / "bin"
             bin_dir.mkdir()
             for name, content in {
-                "docker": "#!/bin/sh\necho \"$*\" >> \"$DOCKER_LOG\"\nwhile [ $# -gt 0 ]; do if [ \"$1\" = --env-file ]; then envfile=$2; shift; fi; shift; done\n[ -z \"${envfile:-}\" ] || cat \"$envfile\"\necho HOST_PORT=9090\n",
+                "docker": "#!/bin/sh\necho \"$*\" >> \"$DOCKER_LOG\"\ncase \"$*\" in *' port fitbest-server 8080') echo 0.0.0.0:9090;; esac\n",
                 "curl": "#!/bin/sh\nexit ${FAIL_CURL:-0}\n",
             }.items():
                 executable = bin_dir / name

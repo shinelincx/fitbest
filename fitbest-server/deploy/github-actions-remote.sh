@@ -22,8 +22,8 @@ if ! docker volume inspect "${project}_pg_data" "${project}_redis_data" > /dev/n
   exit 1
 fi
 if [[ -L $path/.fitbest-current ]]; then
-  old_password=$(docker compose --env-file "$path/.fitbest-current/.env" -f "$release/docker-compose.yml" -f "$release/docker-compose.release.yml" -f "$release/docker-compose.registry.yml" config --environment | sed -n 's/^POSTGRES_PASSWORD=//p')
-  new_password=$("${compose[@]}" config --environment | sed -n 's/^POSTGRES_PASSWORD=//p')
+  old_password=$(sed -nE 's/^[[:space:]]*(export[[:space:]]+)?POSTGRES_PASSWORD[[:space:]]*=[[:space:]]*//p' "$path/.fitbest-current/.env" | tail -n 1)
+  new_password=$(sed -nE 's/^[[:space:]]*(export[[:space:]]+)?POSTGRES_PASSWORD[[:space:]]*=[[:space:]]*//p' "$release/.env" | tail -n 1)
   if [[ $old_password != "$new_password" ]]; then
     echo 'Changing POSTGRES_PASSWORD requires a separate database password migration.' >&2
     exit 1
@@ -31,8 +31,8 @@ if [[ -L $path/.fitbest-current ]]; then
 fi
 docker image inspect "${namespace}-server:${tag}" "${namespace}-web:${tag}" > /dev/null
 "${compose[@]}" up --no-build --pull never --wait --wait-timeout 180
-host_port=$("${compose[@]}" config --environment | sed -n 's/^HOST_PORT=//p')
-host_port=${host_port:-8080}
+host_address=$("${compose[@]}" port fitbest-server 8080 | head -n 1)
+host_port=${host_address##*:}
 [[ $host_port =~ ^[0-9]+$ ]]
 for route in actuator/health fitbest/ fitbest-hd/ fit-best/ hyrox/ hyrox/HD/ btwe/ btwe/HD/ fitbestwebsite/ console/; do
   curl --fail --silent --show-error "http://127.0.0.1:$host_port/$route" > /dev/null
