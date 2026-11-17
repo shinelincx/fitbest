@@ -20,7 +20,7 @@ export default function Layout() {
 
   // 容器：HD 版全宽，手机版限宽 430px
   const containerCls = IS_HD
-    ? 'relative z-10 mx-auto flex h-[100dvh] w-full flex-col bg-bg'
+    ? 'hd relative z-10 mx-auto flex h-[100dvh] w-full flex-col bg-bg'
     : 'relative z-10 mx-auto flex h-[100dvh] w-full max-w-[430px] flex-col bg-bg'
 
   const mainPadding = isTraining

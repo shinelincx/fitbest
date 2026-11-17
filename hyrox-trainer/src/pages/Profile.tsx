@@ -149,14 +149,14 @@ export default function Profile() {
   }
 
   return (
-    <div className="px-5 pt-5 lg:grid lg:grid-cols-[minmax(0,1.15fr)_minmax(0,1fr)] lg:items-start lg:gap-x-6 lg:px-8 lg:pt-7">
+    <div className="px-5 pt-5 hd:lg:grid hd:lg:grid-cols-[minmax(0,1.15fr)_minmax(0,1fr)] hd:lg:items-start hd:lg:gap-x-6 hd:lg:px-8 hd:lg:pt-7">
       {/* 个人卡片 */}
-      <header className="reveal reveal-1 mb-6 lg:col-start-1 lg:row-start-1">
+      <header className="reveal reveal-1 mb-6 hd:lg:col-start-1 hd:lg:row-start-1">
         <button
           onClick={() => (sso ? toast('资料由 FITBEST 账号管理，请到 FITBEST 修改') : openEdit())}
-          className="flex w-full items-center gap-4 rounded-radius-lg border border-border bg-surface p-5 text-left transition-colors active:bg-surface-2 lg:gap-5 lg:p-6"
+          className="flex w-full items-center gap-4 rounded-radius-lg border border-border bg-surface p-5 text-left transition-colors active:bg-surface-2 hd:lg:gap-5 hd:lg:p-6"
         >
-          <div className="flex h-16 w-16 items-center justify-center overflow-hidden rounded-full border-2 border-primary bg-primary/10 font-display text-2xl font-bold text-primary lg:h-20 lg:w-20">
+          <div className="flex h-16 w-16 items-center justify-center overflow-hidden rounded-full border-2 border-primary bg-primary/10 font-display text-2xl font-bold text-primary hd:lg:h-20 hd:lg:w-20">
             {avatarSrc ? (
               <img src={avatarSrc} alt={displayName} className="h-full w-full object-cover" />
             ) : (
@@ -164,7 +164,7 @@ export default function Profile() {
             )}
           </div>
           <div className="min-w-0 flex-1">
-            <h1 className="truncate font-display text-xl font-bold lg:text-2xl">{displayName}</h1>
+            <h1 className="truncate font-display text-xl font-bold hd:lg:text-2xl">{displayName}</h1>
             <p className="text-sm text-text-sub">
               {levelLabel(user.level)}选手 · 连续 {user.stats.streak} 天
             </p>
@@ -177,8 +177,8 @@ export default function Profile() {
       </header>
 
       {/* 账号状态 */}
-      <section className="reveal reveal-2 mb-6 lg:col-start-1 lg:row-start-2">
-        <div className="flex items-center justify-between gap-3 rounded-radius-lg border border-border bg-surface p-4 lg:p-5">
+      <section className="reveal reveal-2 mb-6 hd:lg:col-start-1 hd:lg:row-start-2">
+        <div className="flex items-center justify-between gap-3 rounded-radius-lg border border-border bg-surface p-4 hd:lg:p-5">
           <div className="min-w-0">
             <p className="text-sm font-medium">{authed ? '已登录' : '未登录'}</p>
             <p className="text-xs text-text-sub">
@@ -204,10 +204,10 @@ export default function Profile() {
       </section>
 
       {/* 返回 FITBEST 聚合入口 */}
-      <section className="reveal reveal-2 mb-6 lg:col-start-2 lg:row-start-1">
+      <section className="reveal reveal-2 mb-6 hd:lg:col-start-2 hd:lg:row-start-1">
         <a
           href={import.meta.env.VITE_BUILD === 'hd' ? '/fit-best/HD/' : '/fit-best/'}
-          className="flex items-center gap-3 rounded-radius-lg border border-border bg-surface p-4 transition-colors active:bg-surface-2 lg:p-5"
+          className="flex items-center gap-3 rounded-radius-lg border border-border bg-surface p-4 transition-colors active:bg-surface-2 hd:lg:p-5"
         >
           <img
             src="/fit-best/logo.png"
@@ -223,22 +223,22 @@ export default function Profile() {
       </section>
 
       {/* 成就数据 */}
-      <section className="reveal reveal-2 mb-6 grid grid-cols-2 gap-3 lg:col-start-1 lg:row-start-3 lg:gap-4">
-        <div className="rounded-radius-md border border-border bg-surface p-4 lg:p-5">
+      <section className="reveal reveal-2 mb-6 grid grid-cols-2 gap-3 hd:lg:col-start-1 hd:lg:row-start-3 hd:lg:gap-4">
+        <div className="rounded-radius-md border border-border bg-surface p-4 hd:lg:p-5">
           <Trophy size={20} className="text-warning" />
-          <p className="mt-2 font-display text-2xl font-bold lg:whitespace-nowrap lg:text-3xl">{user.stats.totalSessions}</p>
+          <p className="mt-2 font-display text-2xl font-bold hd:lg:whitespace-nowrap hd:lg:text-3xl">{user.stats.totalSessions}</p>
           <p className="text-xs text-text-sub">累计训练次数</p>
         </div>
-        <div className="rounded-radius-md border border-border bg-surface p-4 lg:p-5">
+        <div className="rounded-radius-md border border-border bg-surface p-4 hd:lg:p-5">
           <MapPin size={20} className="text-accent" />
-          <p className="mt-2 font-display text-2xl font-bold lg:whitespace-nowrap lg:text-3xl">{user.stats.totalKm}</p>
+          <p className="mt-2 font-display text-2xl font-bold hd:lg:whitespace-nowrap hd:lg:text-3xl">{user.stats.totalKm}</p>
           <p className="text-xs text-text-sub">累计公里数</p>
         </div>
       </section>
 
       {/* 心率设备 */}
-      <section className="reveal reveal-3 mb-6 lg:col-start-2 lg:row-start-2">
-        <h3 className="mb-3 flex items-center gap-1.5 font-display text-base font-bold lg:text-lg">
+      <section className="reveal reveal-3 mb-6 hd:lg:col-start-2 hd:lg:row-start-2">
+        <h3 className="mb-3 flex items-center gap-1.5 font-display text-base font-bold hd:lg:text-lg">
           <Heart size={18} className="text-danger" /> 我的心率设备
         </h3>
         <p className="mb-3 text-xs text-text-sub">
@@ -248,16 +248,16 @@ export default function Profile() {
       </section>
 
       {/* 智能器械管理 */}
-      <section className="reveal reveal-4 mb-6 lg:col-start-2 lg:row-start-3">
-        <h3 className="mb-3 flex items-center gap-1.5 font-display text-base font-bold lg:text-lg">
+      <section className="reveal reveal-4 mb-6 hd:lg:col-start-2 hd:lg:row-start-3">
+        <h3 className="mb-3 flex items-center gap-1.5 font-display text-base font-bold hd:lg:text-lg">
           <Cpu size={18} className="text-primary" /> 我的智能器械
         </h3>
         <DevicePanel types={['treadmill', 'rower', 'ski', 'bike', 'sled', 'rep']} />
       </section>
 
       {/* 赛事日历 */}
-      <section className="reveal reveal-4 mb-6 lg:col-start-2 lg:row-start-4">
-        <h3 className="mb-3 flex items-center gap-1.5 font-display text-base font-bold lg:text-lg">
+      <section className="reveal reveal-4 mb-6 hd:lg:col-start-2 hd:lg:row-start-4">
+        <h3 className="mb-3 flex items-center gap-1.5 font-display text-base font-bold hd:lg:text-lg">
           <Calendar size={18} className="text-primary" /> HYROX 赛事日历
         </h3>
         <div className="space-y-2">
@@ -300,7 +300,7 @@ export default function Profile() {
       </section>
 
       {/* 菜单 */}
-      <section className="reveal reveal-4 lg:col-start-2 lg:row-start-5">
+      <section className="reveal reveal-4 hd:lg:col-start-2 hd:lg:row-start-5">
         <div className="overflow-hidden rounded-radius-lg border border-border bg-surface">
           {menu.map((m, i) => {
             const Icon = m.icon
@@ -326,14 +326,14 @@ export default function Profile() {
                 {m.to ? (
                   <Link
                     to={m.to}
-                    className="flex w-full items-center gap-3 p-4 text-left transition-colors active:bg-surface-2 lg:p-5"
+                    className="flex w-full items-center gap-3 p-4 text-left transition-colors active:bg-surface-2 hd:lg:p-5"
                   >
                     {inner}
                   </Link>
                 ) : (
                   <button
                     onClick={shareApp}
-                    className="flex w-full items-center gap-3 p-4 text-left transition-colors active:bg-surface-2 lg:p-5"
+                    className="flex w-full items-center gap-3 p-4 text-left transition-colors active:bg-surface-2 hd:lg:p-5"
                   >
                     {inner}
                   </button>

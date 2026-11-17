@@ -57,7 +57,7 @@ export default function Settings() {
   }
 
   return (
-    <div className="px-5 pt-5 lg:mx-auto lg:w-full lg:max-w-[720px] lg:px-8 lg:pt-7">
+    <div className="px-5 pt-5 hd:lg:mx-auto hd:lg:w-full hd:lg:max-w-[720px] hd:lg:px-8 hd:lg:pt-7">
       <header className="reveal reveal-1 mb-6 flex items-center justify-between">
         <button
           onClick={() => navigate(-1)}

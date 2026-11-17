@@ -57,9 +57,9 @@ export default function Plans() {
   }
 
   return (
-    <div className="px-5 pt-5 lg:px-8 lg:pt-7">
+    <div className="px-5 pt-5 hd:lg:px-8 hd:lg:pt-7">
       <header className="reveal reveal-1 mb-6">
-        <h1 className="font-display text-2xl font-bold lg:text-[26px]">训练计划</h1>
+        <h1 className="font-display text-2xl font-bold hd:lg:text-[26px]">训练计划</h1>
         <p className="mt-1 text-sm text-text-sub">和数字人教练定制，或直接选择备赛方案</p>
       </header>
 
@@ -125,7 +125,7 @@ export default function Plans() {
         </button>
       )}
 
-      <div className="space-y-4 lg:grid lg:grid-cols-2 lg:items-start lg:gap-5 lg:space-y-0">
+      <div className="space-y-4 hd:lg:grid hd:lg:grid-cols-2 hd:lg:items-start hd:lg:gap-5 hd:lg:space-y-0">
         {plans.map((plan, i) => {
           const isSelected = selected === plan.id
           return (

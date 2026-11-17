@@ -239,7 +239,7 @@ export default function PlanCoach() {
   const currentStep = step < STEPS.length ? STEPS[step] : null
 
   return (
-    <div className="flex h-full flex-col px-4 pt-4 lg:mx-auto lg:w-full lg:max-w-[900px] lg:px-8 lg:pt-7">
+    <div className="flex h-full flex-col px-4 pt-4 hd:lg:mx-auto hd:lg:w-full hd:lg:max-w-[900px] hd:lg:px-8 hd:lg:pt-7">
       {/* 头部 */}
       <header className="reveal reveal-1 mb-3 flex items-center justify-between">
         <button

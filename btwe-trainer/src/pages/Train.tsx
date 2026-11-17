@@ -524,9 +524,9 @@ export default function Train({ userId }: { userId: string | null }) {
   const progress = ((moduleIdx + (phase === 'run' ? 0 : phase === 'cardio' ? 0.33 : 0.66)) / 4) * 100
 
   return (
-    <div className="flex h-full flex-col px-5 pt-5 lg:grid lg:grid-cols-[minmax(0,1.2fr)_minmax(0,1fr)] lg:grid-flow-row-dense lg:auto-rows-min lg:content-start lg:items-start lg:gap-5 lg:px-8 lg:pt-7">
+    <div className="flex h-full flex-col px-5 pt-5 hd:lg:grid hd:lg:grid-cols-[minmax(0,1.2fr)_minmax(0,1fr)] hd:lg:grid-flow-row-dense hd:lg:auto-rows-min hd:lg:content-start hd:lg:items-start hd:lg:gap-5 hd:lg:px-8 hd:lg:pt-7">
       {/* 模块进度 */}
-      <div className="reveal reveal-1 mb-3 lg:col-start-1 lg:mb-0">
+      <div className="reveal reveal-1 mb-3 hd:lg:col-start-1 hd:lg:mb-0">
         <div className="mb-2 flex items-center justify-between text-xs">
           <span className="font-medium text-text-sub">
             BTWE 模块 {moduleIdx + 1} / 4 · {phaseLabel[phase]}
@@ -553,7 +553,7 @@ export default function Train({ userId }: { userId: string | null }) {
       </div>
 
       {/* 计时器 —— 数据来自器械 elapsedTime */}
-      <div className="reveal reveal-2 mb-3 text-center lg:col-start-1 lg:mb-0">
+      <div className="reveal reveal-2 mb-3 text-center hd:lg:col-start-1 hd:lg:mb-0">
         <p className="mb-1 text-xs uppercase tracking-widest text-text-sub">
           器械计时{' '}
           {phaseDevice.running ? (
@@ -564,7 +564,7 @@ export default function Train({ userId }: { userId: string | null }) {
             <span className="text-text-sub">● 已暂停</span>
           ) : null}
         </p>
-        <p className="font-mono text-7xl font-bold tracking-tight text-text tabular-nums lg:text-8xl">
+        <p className="font-mono text-7xl font-bold tracking-tight text-text tabular-nums hd:lg:text-8xl">
           {formatTimer(deviceSeconds * 1000)}
         </p>
         {phaseTimes.length > 0 && (
@@ -575,7 +575,7 @@ export default function Train({ userId }: { userId: string | null }) {
       </div>
 
       {/* AI 教练实时鼓励气泡 */}
-      <div key={coachKey} className="reveal reveal-2 mb-3 coach-pop lg:col-start-2 lg:mb-0">
+      <div key={coachKey} className="reveal reveal-2 mb-3 coach-pop hd:lg:col-start-2 hd:lg:mb-0">
         <div className="flex items-center gap-2.5 rounded-radius-md border border-primary/30 bg-primary/5 px-3 py-2.5">
           <div className="relative shrink-0">
             <img
@@ -593,7 +593,7 @@ export default function Train({ userId }: { userId: string | null }) {
       </div>
 
       {/* 手环状态与同步 */}
-      <div className="lg:col-start-2 lg:[&>div:first-child]:mb-0">
+      <div className="hd:lg:col-start-2 hd:lg:[&>div:first-child]:mb-0">
         <BandPanel />
       </div>
 
@@ -601,7 +601,7 @@ export default function Train({ userId }: { userId: string | null }) {
       <div
         className={`reveal reveal-2 mb-3 flex items-center justify-between rounded-radius-md border px-3 py-2 ${
           hrDevice.connected ? 'border-danger/30 bg-danger/5' : 'border-border bg-surface'
-        } lg:col-start-2 lg:mb-0`}
+        } hd:lg:col-start-2 hd:lg:mb-0`}
       >
         <div className="flex items-center gap-2">
           <Heart
@@ -631,7 +631,7 @@ export default function Train({ userId }: { userId: string | null }) {
 
       {/* 训练页内连接心率带 */}
       {hrPanelOpen && !hrDevice.connected && (
-        <div className="reveal reveal-2 mb-3 rounded-radius-md border border-border bg-surface p-3 lg:col-start-2 lg:mb-0">
+        <div className="reveal reveal-2 mb-3 rounded-radius-md border border-border bg-surface p-3 hd:lg:col-start-2 hd:lg:mb-0">
           <div className="mb-2 flex items-center justify-between">
             <p className="flex items-center gap-1 text-xs font-semibold text-danger">
               <Heart size={12} /> 连接心率带
@@ -654,7 +654,7 @@ export default function Train({ userId }: { userId: string | null }) {
       <div
         className={`reveal reveal-2 mb-3 rounded-radius-md border p-3 ${
           deviceConnected ? 'border-border bg-surface' : 'border-danger/50 bg-danger/5'
-        } lg:col-start-2 lg:mb-0`}
+        } hd:lg:col-start-2 hd:lg:mb-0`}
       >
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-2">
@@ -754,7 +754,7 @@ export default function Train({ userId }: { userId: string | null }) {
       </div>
 
       {/* 平板驾驶舱：整场动作序列 */}
-      <section className="hidden rounded-radius-lg border border-border bg-surface p-5 lg:col-start-2 lg:block">
+      <section className="hidden rounded-radius-lg border border-border bg-surface p-5 hd:lg:col-start-2 hd:lg:block">
         <div className="mb-4 flex items-start justify-between gap-4">
           <div>
             <p className="text-xs text-text-sub">整场动作序列</p>
@@ -798,14 +798,14 @@ export default function Train({ userId }: { userId: string | null }) {
       {phaseDevice.error && <p role="alert" className="mb-3 text-sm text-danger">{phaseDevice.error}</p>}
 
       {/* 动作卡 */}
-      <div className="reveal reveal-3 mb-3 rounded-radius-lg border border-border bg-surface p-5 lg:col-start-1 lg:mb-0 lg:p-6">
+      <div className="reveal reveal-3 mb-3 rounded-radius-lg border border-border bg-surface p-5 hd:lg:col-start-1 hd:lg:mb-0 hd:lg:p-6">
         <div className="flex items-center gap-3">
           <div className="flex h-12 w-12 items-center justify-center rounded-radius-md bg-primary/10 text-primary">
             <PhaseIcon size={24} />
           </div>
           <div>
             <p className="text-xs text-text-sub">{phase === 'run' ? '心肺过渡' : '功能训练'}</p>
-            <h2 className="font-display text-xl font-bold lg:text-2xl">{phaseLabel[phase]}</h2>
+            <h2 className="font-display text-xl font-bold hd:lg:text-2xl">{phaseLabel[phase]}</h2>
           </div>
         </div>
 
@@ -845,7 +845,7 @@ export default function Train({ userId }: { userId: string | null }) {
       </div>
 
       {/* 控制按钮 */}
-      <div className="reveal reveal-4 mt-auto space-y-3 lg:col-start-1 lg:mt-0">
+      <div className="reveal reveal-4 mt-auto space-y-3 hd:lg:col-start-1 hd:lg:mt-0">
         <button
           onClick={completePhase}
           disabled={!running || !deviceConnected || !targetReached}

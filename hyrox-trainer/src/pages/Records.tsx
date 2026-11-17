@@ -84,25 +84,25 @@ export default function Records() {
   )
 
   return (
-    <div className="px-5 pt-5 lg:px-8 lg:pt-7">
+    <div className="px-5 pt-5 hd:lg:px-8 hd:lg:pt-7">
       <header className="reveal reveal-1 mb-6">
-        <h1 className="font-display text-2xl font-bold lg:text-[26px]">训练记录</h1>
+        <h1 className="font-display text-2xl font-bold hd:lg:text-[26px]">训练记录</h1>
         <p className="mt-1 text-sm text-text-sub">追踪你的训练成绩变化</p>
       </header>
 
       {/* 汇总 */}
-      <div className="reveal reveal-2 mb-6 grid grid-cols-3 gap-3 lg:gap-5">
-        <div className="rounded-radius-md border border-border bg-surface p-3 lg:p-4">
+      <div className="reveal reveal-2 mb-6 grid grid-cols-3 gap-3 hd:lg:gap-5">
+        <div className="rounded-radius-md border border-border bg-surface p-3 hd:lg:p-4">
           <p className="text-[11px] text-text-sub">总训练</p>
           <p className="font-display text-xl font-bold text-text">{sessions.length}</p>
         </div>
-        <div className="rounded-radius-md border border-border bg-surface p-3 lg:p-4">
+        <div className="rounded-radius-md border border-border bg-surface p-3 hd:lg:p-4">
           <p className="text-[11px] text-text-sub">最佳</p>
           <p className="font-mono text-xl font-bold text-primary">
             {best ? formatTime(best) : '—'}
           </p>
         </div>
-        <div className="rounded-radius-md border border-border bg-surface p-3 lg:p-4">
+        <div className="rounded-radius-md border border-border bg-surface p-3 hd:lg:p-4">
           <p className="text-[11px] text-text-sub">平均</p>
           <p className="font-mono text-xl font-bold text-accent">
             {avg ? formatTime(avg) : '—'}
@@ -111,7 +111,7 @@ export default function Records() {
       </div>
 
       {/* 趋势图 */}
-      <section className="reveal reveal-3 mb-6 rounded-radius-lg border border-border bg-surface p-4 lg:p-5">
+      <section className="reveal reveal-3 mb-6 rounded-radius-lg border border-border bg-surface p-4 hd:lg:p-5">
         <div className="mb-3 flex items-center justify-between">
           <h3 className="flex items-center gap-1.5 font-display text-sm font-bold">
             <TrendingDown size={16} className="text-primary" /> 完赛时间趋势
@@ -119,11 +119,11 @@ export default function Records() {
           <span className="text-[10px] text-text-sub">越低越好</span>
         </div>
         {chartData.length < 2 ? (
-          <div className="flex h-48 items-center justify-center rounded-radius-md border border-dashed border-border text-xs text-text-sub lg:h-56">
+          <div className="flex h-48 items-center justify-center rounded-radius-md border border-dashed border-border text-xs text-text-sub hd:lg:h-56">
             至少完成 2 次训练后生成趋势图
           </div>
         ) : (
-          <div className="h-48 lg:h-56">
+          <div className="h-48 hd:lg:h-56">
             <ResponsiveContainer width="100%" height="100%">
               <LineChart data={chartData} margin={{ top: 5, right: 5, bottom: 0, left: -20 }}>
                 <CartesianGrid strokeDasharray="3 3" stroke="#2a2a33" vertical={false} />
@@ -183,13 +183,13 @@ export default function Records() {
             暂无符合条件的训练记录
           </div>
         ) : (
-          <div className="space-y-2 lg:grid lg:grid-cols-2 lg:items-start lg:gap-4 lg:space-y-0">
+          <div className="space-y-2 hd:lg:grid hd:lg:grid-cols-2 hd:lg:items-start hd:lg:gap-4 hd:lg:space-y-0">
             {visible.map((s) => {
               const isOpen = expanded === s.id
               return (
                 <div
                   key={s.id}
-                  className={`overflow-hidden rounded-radius-md border border-border bg-surface ${isOpen ? 'lg:col-span-2' : ''}`}
+                  className={`overflow-hidden rounded-radius-md border border-border bg-surface ${isOpen ? 'hd:lg:col-span-2' : ''}`}
                 >
                   <button
                     onClick={() => setExpanded(isOpen ? null : s.id)}
@@ -219,7 +219,7 @@ export default function Records() {
                       <span className="flex items-center gap-1">
                         <Clock size={12} /> 8 组
                       </span>
-                      <div className="flex gap-1.5 lg:flex-wrap lg:justify-end">
+                      <div className="flex gap-1.5 hd:lg:flex-wrap hd:lg:justify-end">
                         {s.moduleTimes.map((t, i) => (
                           <span
                             key={i}

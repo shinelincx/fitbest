@@ -20,6 +20,9 @@ describe.each([
 
   it('底部导航预留安全区，避免内容被遮挡', () => {
     const html = render('/')
+    if (_name !== 'FITBEST') {
+      expect(html.includes('class="hd ')).toBe(import.meta.env.VITE_BUILD === 'hd')
+    }
     expect(html).toContain(import.meta.env.VITE_BUILD === 'hd'
       ? 'pb-[calc(env(safe-area-inset-bottom)+88px)]'
       : 'pb-[calc(env(safe-area-inset-bottom)+96px)]')

@@ -84,9 +84,9 @@ export default function Records() {
   )
 
   return (
-    <div className="px-5 pt-5 lg:px-8 lg:pt-7">
+    <div className="px-5 pt-5 hd:lg:px-8 hd:lg:pt-7">
       <header className="reveal reveal-1 mb-6">
-        <h1 className="font-display text-2xl font-bold lg:text-[26px]">训练记录</h1>
+        <h1 className="font-display text-2xl font-bold hd:lg:text-[26px]">训练记录</h1>
         <p className="mt-1 text-sm text-text-sub">追踪你的训练成绩变化</p>
       </header>
 
@@ -183,13 +183,13 @@ export default function Records() {
             暂无符合条件的训练记录
           </div>
         ) : (
-          <div className="space-y-2 lg:grid lg:grid-cols-2 lg:items-start lg:gap-4 lg:space-y-0">
+          <div className="space-y-2 hd:lg:grid hd:lg:grid-cols-2 hd:lg:items-start hd:lg:gap-4 hd:lg:space-y-0">
             {visible.map((s) => {
               const isOpen = expanded === s.id
               return (
                 <div
                   key={s.id}
-                  className={`overflow-hidden rounded-radius-md border border-border bg-surface ${isOpen ? 'lg:col-span-2' : ''}`}
+                  className={`overflow-hidden rounded-radius-md border border-border bg-surface ${isOpen ? 'hd:lg:col-span-2' : ''}`}
                 >
                   <button
                     onClick={() => setExpanded(isOpen ? null : s.id)}

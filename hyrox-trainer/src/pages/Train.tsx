@@ -512,10 +512,10 @@ export default function Train({ userId }: { userId: string | null }) {
     ((moduleIdx + (phase === 'run' ? 0 : 0.5)) / HYROX_MODULES.length) * 100
 
   return (
-    <div className="flex h-full flex-col px-5 pt-5 lg:grid lg:grid-cols-[minmax(0,1.2fr)_minmax(0,1fr)] lg:content-start lg:items-start lg:gap-x-6 lg:px-8 lg:pt-7">
+    <div className="flex h-full flex-col px-5 pt-5 hd:lg:grid hd:lg:grid-cols-[minmax(0,1.2fr)_minmax(0,1fr)] hd:lg:content-start hd:lg:items-start hd:lg:gap-x-6 hd:lg:px-8 hd:lg:pt-7">
       {/* 模块进度 */}
-      <div className="reveal reveal-1 mb-3 lg:col-start-1 lg:row-start-1 lg:mb-5">
-        <div className="mb-2 flex items-center justify-between text-xs lg:text-sm">
+      <div className="reveal reveal-1 mb-3 hd:lg:col-start-1 hd:lg:row-start-1 hd:lg:mb-5">
+        <div className="mb-2 flex items-center justify-between text-xs hd:lg:text-sm">
           <span className="font-medium text-text-sub">
             HYROX 站点 {moduleIdx + 1} / {HYROX_MODULES.length} · {phaseLabel[phase]}
           </span>
@@ -541,7 +541,7 @@ export default function Train({ userId }: { userId: string | null }) {
       </div>
 
       {/* 计时器 —— 数据来自器械 elapsedTime */}
-      <div className="reveal reveal-2 mb-3 text-center lg:col-start-1 lg:row-start-2 lg:mb-5">
+      <div className="reveal reveal-2 mb-3 text-center hd:lg:col-start-1 hd:lg:row-start-2 hd:lg:mb-5">
         <p className="mb-1 text-xs uppercase tracking-widest text-text-sub">
           器械计时{' '}
           {phaseDevice.running ? (
@@ -552,7 +552,7 @@ export default function Train({ userId }: { userId: string | null }) {
             <span className="text-text-sub">● 已暂停</span>
           ) : null}
         </p>
-        <p className="font-mono text-7xl font-bold tracking-tight text-text tabular-nums lg:whitespace-nowrap lg:text-8xl">
+        <p className="font-mono text-7xl font-bold tracking-tight text-text tabular-nums hd:lg:whitespace-nowrap hd:lg:text-8xl">
           {formatTimer(deviceSeconds * 1000)}
         </p>
         {phaseTimes.length > 0 && (
@@ -563,7 +563,7 @@ export default function Train({ userId }: { userId: string | null }) {
       </div>
 
       {/* AI 教练实时鼓励气泡 */}
-      <div key={coachKey} className="reveal reveal-2 mb-3 coach-pop lg:col-start-1 lg:row-start-3 lg:mb-5">
+      <div key={coachKey} className="reveal reveal-2 mb-3 coach-pop hd:lg:col-start-1 hd:lg:row-start-3 hd:lg:mb-5">
         <div className="flex items-center gap-2.5 rounded-radius-md border border-primary/30 bg-primary/5 px-3 py-2.5">
           <div className="relative shrink-0">
             <img
@@ -581,13 +581,13 @@ export default function Train({ userId }: { userId: string | null }) {
       </div>
 
       {/* 手环状态与同步 */}
-      <div className="contents lg:col-start-2 lg:row-start-1 lg:block">
+      <div className="contents hd:lg:col-start-2 hd:lg:row-start-1 hd:lg:block">
         <BandPanel />
       </div>
 
       {/* 心率设备状态条 */}
       <div
-        className={`reveal reveal-2 mb-3 flex items-center justify-between rounded-radius-md border px-3 py-2 lg:col-start-2 lg:row-start-2 lg:mb-5 lg:px-4 lg:py-3 ${
+        className={`reveal reveal-2 mb-3 flex items-center justify-between rounded-radius-md border px-3 py-2 hd:lg:col-start-2 hd:lg:row-start-2 hd:lg:mb-5 hd:lg:px-4 hd:lg:py-3 ${
           hrDevice.connected ? 'border-danger/30 bg-danger/5' : 'border-border bg-surface'
         }`}
       >
@@ -619,7 +619,7 @@ export default function Train({ userId }: { userId: string | null }) {
 
       {/* 训练页内连接心率带 */}
       {hrPanelOpen && !hrDevice.connected && (
-        <div className="reveal reveal-2 mb-3 rounded-radius-md border border-border bg-surface p-3 lg:col-start-2 lg:row-start-3 lg:mb-5">
+        <div className="reveal reveal-2 mb-3 rounded-radius-md border border-border bg-surface p-3 hd:lg:col-start-2 hd:lg:row-start-3 hd:lg:mb-5">
           <div className="mb-2 flex items-center justify-between">
             <p className="flex items-center gap-1 text-xs font-semibold text-danger">
               <Heart size={12} /> 连接心率带
@@ -640,7 +640,7 @@ export default function Train({ userId }: { userId: string | null }) {
 
       {/* 实时器械数据流 */}
       <div
-        className={`reveal reveal-2 mb-3 rounded-radius-md border p-3 lg:col-start-2 lg:row-start-4 lg:mb-0 lg:p-4 ${
+        className={`reveal reveal-2 mb-3 rounded-radius-md border p-3 hd:lg:col-start-2 hd:lg:row-start-4 hd:lg:mb-0 hd:lg:p-4 ${
           deviceConnected ? 'border-border bg-surface' : 'border-danger/50 bg-danger/5'
         }`}
       >
@@ -743,14 +743,14 @@ export default function Train({ userId }: { userId: string | null }) {
       {phaseDevice.error && <p role="alert" className="mb-3 text-sm text-danger">{phaseDevice.error}</p>}
 
       {/* 动作卡 */}
-      <div className="reveal reveal-3 mb-3 rounded-radius-lg border border-border bg-surface p-5 lg:col-start-1 lg:row-start-4 lg:mb-5 lg:p-6">
+      <div className="reveal reveal-3 mb-3 rounded-radius-lg border border-border bg-surface p-5 hd:lg:col-start-1 hd:lg:row-start-4 hd:lg:mb-5 hd:lg:p-6">
         <div className="flex items-center gap-3">
           <div className="flex h-12 w-12 items-center justify-center rounded-radius-md bg-primary/10 text-primary">
             <PhaseIcon size={24} />
           </div>
           <div>
             <p className="text-xs text-text-sub">{phase === 'run' ? '跑步赛段' : '功能站点'}</p>
-            <h2 className="font-display text-xl font-bold lg:text-2xl">{phaseLabel[phase]}</h2>
+            <h2 className="font-display text-xl font-bold hd:lg:text-2xl">{phaseLabel[phase]}</h2>
           </div>
         </div>
 
@@ -790,11 +790,11 @@ export default function Train({ userId }: { userId: string | null }) {
       </div>
 
       {/* 控制按钮 */}
-      <div className="reveal reveal-4 mt-auto space-y-3 lg:col-start-1 lg:row-start-5 lg:mt-0 lg:self-start">
+      <div className="reveal reveal-4 mt-auto space-y-3 hd:lg:col-start-1 hd:lg:row-start-5 hd:lg:mt-0 hd:lg:self-start">
         <button
           onClick={completePhase}
           disabled={!running || !deviceConnected || !targetReached}
-          className={`flex w-full items-center justify-center gap-2 rounded-radius-md py-4 font-display text-lg font-bold transition-transform active:scale-[0.98] disabled:opacity-40 lg:py-5 ${
+          className={`flex w-full items-center justify-center gap-2 rounded-radius-md py-4 font-display text-lg font-bold transition-transform active:scale-[0.98] disabled:opacity-40 hd:lg:py-5 ${
             targetReached
               ? 'bg-primary text-bg'
               : 'bg-surface border border-border text-text-sub'
@@ -857,7 +857,7 @@ export default function Train({ userId }: { userId: string | null }) {
       </div>
 
       {/* 平板驾驶舱：完整动作序列与组数统计 */}
-      <aside className="hidden rounded-radius-lg border border-border bg-surface p-5 lg:col-start-2 lg:row-start-5 lg:block">
+      <aside className="hidden rounded-radius-lg border border-border bg-surface p-5 hd:lg:col-start-2 hd:lg:row-start-5 hd:lg:block">
         <div className="flex items-start justify-between gap-3">
           <div>
             <p className="text-xs uppercase tracking-wider text-primary">训练序列</p>

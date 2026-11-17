@@ -220,7 +220,7 @@ export default function AiCoach() {
   }
 
   return (
-    <div className="flex h-full flex-col px-5 pt-5 lg:mx-auto lg:w-full lg:max-w-[900px] lg:px-8 lg:pt-7">
+    <div className="flex h-full flex-col px-5 pt-5 hd:lg:mx-auto hd:lg:w-full hd:lg:max-w-[900px] hd:lg:px-8 hd:lg:pt-7">
       {/* 顶栏 */}
       <header className="reveal reveal-1 mb-4 flex items-center justify-between">
         <button
