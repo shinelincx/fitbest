@@ -38,6 +38,21 @@ class AdminAuthInterceptorTest {
         assertThat(request.getAttribute(AdminAuthInterceptor.ATTR_ADMIN)).isInstanceOf(JwtCodec.AdminPayload.class);
     }
 
+    @Test
+    void viewerCanReadButCannotUseWriteMethods() throws Exception {
+        AdminUser admin = admin();
+        admin.setRole("viewer");
+        when(admins.findById(admin.getId())).thenReturn(Optional.of(admin));
+        MockHttpServletRequest request = signedRequest(admin);
+        request.setMethod("GET");
+        assertThat(interceptor.preHandle(request, new MockHttpServletResponse(), protectedHandler())).isTrue();
+        for (String method : new String[]{"POST", "PUT", "PATCH", "DELETE"}) {
+            request.setMethod(method);
+            assertThatThrownBy(() -> interceptor.preHandle(request, new MockHttpServletResponse(), protectedHandler()))
+                .isInstanceOfSatisfying(BizException.class, error -> assertThat(error.getCode()).isEqualTo(403));
+        }
+    }
+
     @ParameterizedTest
     @MethodSource("permissionChanges")
     void changesToAdministratorInvalidateTheExistingSession(Consumer<AdminUser> change) throws Exception {

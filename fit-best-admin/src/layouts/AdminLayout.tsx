@@ -52,9 +52,9 @@ const menuItems = [
 ]
 
 const EXT_LINKS: Record<string, string> = {
-  'ext:fitbest': 'https://demo.thinkfit.cn/fit-best/',
-  'ext:hyrox': 'https://demo.thinkfit.cn/hyrox/',
-  'ext:btwe': 'https://demo.thinkfit.cn/btwe/',
+  'ext:fitbest': '/fitbest/',
+  'ext:hyrox': '/hyrox/',
+  'ext:btwe': '/btwe/',
 }
 
 const roleLabel: Record<string, string> = {

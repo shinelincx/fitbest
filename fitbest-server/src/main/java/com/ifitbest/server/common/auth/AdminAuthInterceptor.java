@@ -65,6 +65,10 @@ public class AdminAuthInterceptor implements HandlerInterceptor {
             || !Objects.equals(Objects.toString(admin.getGymId(), null), payload.gymId())) {
             throw BizException.unauthorized("后台登录已过期");
         }
+        if ("viewer".equals(admin.getRole()) && !("GET".equals(request.getMethod())
+            || "HEAD".equals(request.getMethod()) || "OPTIONS".equals(request.getMethod()))) {
+            throw BizException.forbidden("只读账号不能修改数据");
+        }
         request.setAttribute(ATTR_ADMIN, payload);
         return true;
     }

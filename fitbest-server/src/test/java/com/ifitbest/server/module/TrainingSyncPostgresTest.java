@@ -31,6 +31,7 @@ import org.springframework.http.MediaType;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.test.context.DynamicPropertyRegistry;
 import org.springframework.test.context.DynamicPropertySource;
+import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
 
 import com.ifitbest.server.common.auth.JwtCodec;
 import com.ifitbest.server.module.admin.AdminService;
@@ -471,6 +472,67 @@ class TrainingSyncPostgresTest {
             assertThat(pages).isLessThanOrEqualTo(3);
         } while (!cursor.isEmpty());
         assertThat(seen).hasSize(203);
+    }
+
+    @Test
+    void administratorLoginReadWriteAndViewerPermissions() {
+        UUID orgId = UUID.randomUUID();
+        UUID adminId = UUID.randomUUID();
+        UUID viewerId = UUID.randomUUID();
+        String suffix = orgId.toString().substring(0, 8);
+        String password = "test-password";
+        String hash = new BCryptPasswordEncoder().encode(password);
+        jdbc.update("insert into orgs (id, name, code) values (?, ?, ?)", orgId, "测试组织", "test-" + suffix);
+        jdbc.update("""
+            insert into admin_users (id, org_id, name, phone, password_hash, role)
+            values (?, ?, ?, ?, ?, 'super'), (?, ?, ?, ?, ?, 'viewer')
+            """, adminId, orgId, "测试管理员", "admin-" + suffix, hash,
+            viewerId, orgId, "测试只读", "viewer-" + suffix, hash);
+        try {
+            String adminToken = adminLogin("admin-" + suffix, password);
+            for (String path : List.of("overview", "users", "sessions", "training-records",
+                    "device-sessions", "machines", "machine-models", "gyms", "event-links",
+                    "event-registrations", "audit-logs")) {
+                assertThat(adminExchange(adminToken, HttpMethod.GET, "/api/v1/admin/" + path, null)
+                    .getStatusCode().is2xxSuccessful()).as(path).isTrue();
+            }
+            String body = """
+                {"title":"测试赛事","externalUrl":"https://example.test/event","status":"draft"}
+                """;
+            var created = adminExchange(adminToken, HttpMethod.POST, "/api/v1/admin/event-links", body);
+            assertThat(created.getStatusCode().is2xxSuccessful()).as("create event").isTrue();
+            String eventId = (String) ((Map<?, ?>) created.getBody()).get("id");
+            assertThat(adminExchange(adminToken, HttpMethod.PATCH, "/api/v1/admin/event-links/" + eventId,
+                "{\"title\":\"更新赛事\"}").getStatusCode().is2xxSuccessful()).isTrue();
+
+            String viewerToken = adminLogin("viewer-" + suffix, password);
+            assertThat(adminExchange(viewerToken, HttpMethod.GET, "/api/v1/admin/event-links", null)
+                .getStatusCode().is2xxSuccessful()).isTrue();
+            assertThat(adminExchange(viewerToken, HttpMethod.DELETE, "/api/v1/admin/event-links/" + eventId, null)
+                .getStatusCode().value()).isEqualTo(403);
+            assertThat(adminExchange(adminToken, HttpMethod.DELETE, "/api/v1/admin/event-links/" + eventId, null)
+                .getStatusCode().is2xxSuccessful()).isTrue();
+        } finally {
+            jdbc.update("delete from audit_logs where org_id = ?", orgId);
+            jdbc.update("delete from event_links where org_id = ?", orgId);
+            jdbc.update("delete from admin_users where org_id = ?", orgId);
+            jdbc.update("delete from orgs where id = ?", orgId);
+        }
+    }
+
+    private String adminLogin(String phone, String password) {
+        var response = http.postForEntity("/api/v1/admin/auth/login",
+            Map.of("phone", phone, "password", password), Map.class);
+        assertThat(response.getStatusCode().is2xxSuccessful()).isTrue();
+        return (String) response.getBody().get("token");
+    }
+
+    private org.springframework.http.ResponseEntity<Object> adminExchange(
+        String adminToken, HttpMethod method, String path, String body) {
+        HttpHeaders headers = new HttpHeaders();
+        headers.setBearerAuth(adminToken);
+        headers.setContentType(MediaType.APPLICATION_JSON);
+        return http.exchange(path, method, new HttpEntity<>(body, headers), Object.class);
     }
 
     private Map<?, ?> post(String path, String body) {
