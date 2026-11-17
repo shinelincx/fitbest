@@ -29,7 +29,7 @@ if [[ -L $path/.fitbest-current ]]; then
     exit 1
   fi
 fi
-"${compose[@]}" pull fitbest-server web-bundle
+docker image inspect "${namespace}-server:${tag}" "${namespace}-web:${tag}" > /dev/null
 "${compose[@]}" up --no-build --pull never --wait --wait-timeout 180
 host_port=$("${compose[@]}" config --environment | sed -n 's/^HOST_PORT=//p')
 host_port=${host_port:-8080}

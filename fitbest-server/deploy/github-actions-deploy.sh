@@ -19,6 +19,11 @@ cp fitbest-server/docker-compose{.yml,.release.yml,.registry.yml} "$work/"
 archive="$DEPLOY_PATH/.fitbest-upload-$GITHUB_RUN_ID-$GITHUB_RUN_ATTEMPT.tar"
 ssh_options=(-i "$work/key" -p "$DEPLOY_PORT" -o BatchMode=yes -o StrictHostKeyChecking=yes -o "UserKnownHostsFile=$work/known_hosts")
 target="$DEPLOY_USER@$DEPLOY_HOST"
+server_image="${FITBEST_IMAGE_NAMESPACE}-server:${FITBEST_RELEASE_TAG}"
+web_image="${FITBEST_IMAGE_NAMESPACE}-web:${FITBEST_RELEASE_TAG}"
+docker pull "$server_image"
+docker pull "$web_image"
+docker save "$server_image" "$web_image" | gzip -1 | ssh "${ssh_options[@]}" "$target" docker load
 tar -C "$work" -cf - .env docker-compose.yml docker-compose.release.yml docker-compose.registry.yml |
   ssh "${ssh_options[@]}" "$target" "umask 077; mkdir -p '$DEPLOY_PATH'; cat > '$archive'"
 ssh "${ssh_options[@]}" "$target" bash -s -- "$DEPLOY_PATH" "$archive" "$DEPLOY_COMPOSE_PROJECT" "$FITBEST_IMAGE_NAMESPACE" "$FITBEST_RELEASE_TAG" "$GITHUB_RUN_ID" "$GITHUB_RUN_ATTEMPT" < fitbest-server/deploy/github-actions-remote.sh

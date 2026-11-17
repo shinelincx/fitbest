@@ -56,7 +56,7 @@ class DeploymentTest(unittest.TestCase):
                 self.assertEqual((path / ".fitbest-current").resolve(), path / ".fitbest-releases/1-1")
                 self.assertFalse(archive.exists())
             docker_calls = (path / "docker.log").read_text()
-            self.assertIn("pull fitbest-server web-bundle", docker_calls)
+            self.assertIn("image inspect ghcr.io/example/test-server:sha-test ghcr.io/example/test-web:sha-test", docker_calls)
             self.assertIn("up --no-build --pull never", docker_calls)
             config.write_text("POSTGRES_PASSWORD=changed\n")
             archive = path / "upload-3.tar"
