@@ -1,6 +1,7 @@
 name: FITBEST CI/CD
 
 on:
+  workflow_dispatch:
   pull_request:
     branches: [main]
   push:
@@ -16,7 +17,7 @@ defaults:
 
 concurrency:
   group: fitbest-${{ github.ref }}
-  cancel-in-progress: true
+  cancel-in-progress: false
 
 jobs:
   verify:
@@ -57,6 +58,8 @@ jobs:
           java-version: 21
           cache: maven
           cache-dependency-path: fitbest-server/pom.xml
+      - name: Test deployment safeguards
+        run: python3 fitbest-server/deploy/test_github_actions_deploy.py
       - name: Build web bundle and run Vitest
         run: |
           for app in fit-best-trainer hyrox-trainer btwe-trainer fit-best-admin; do
@@ -76,7 +79,7 @@ jobs:
 
   publish:
     name: Publish containers
-    if: github.event_name == 'push'
+    if: github.event_name == 'push' || github.event_name == 'workflow_dispatch'
     needs: verify
     runs-on: ubuntu-latest
     timeout-minutes: 25
@@ -122,3 +125,27 @@ jobs:
           printf '%s' "$GHCR_TOKEN" | docker login ghcr.io -u "$GITHUB_ACTOR" --password-stdin
           docker push "${FITBEST_IMAGE_NAMESPACE}-server:${FITBEST_RELEASE_TAG}"
           docker push "${FITBEST_IMAGE_NAMESPACE}-web:${FITBEST_RELEASE_TAG}"
+
+  deploy:
+    name: Deploy production
+    if: vars.DEPLOY_ENABLED == 'true' && github.ref == 'refs/heads/main' && (github.event_name == 'push' || github.event_name == 'workflow_dispatch')
+    needs: publish
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    env:
+      DEPLOY_HOST: ${{ vars.DEPLOY_HOST }}
+      DEPLOY_PORT: ${{ vars.DEPLOY_PORT }}
+      DEPLOY_USER: ${{ vars.DEPLOY_USER }}
+      DEPLOY_PATH: ${{ vars.DEPLOY_PATH }}
+      DEPLOY_COMPOSE_PROJECT: ${{ vars.DEPLOY_COMPOSE_PROJECT }}
+      DEPLOY_SSH_PRIVATE_KEY: ${{ secrets.DEPLOY_SSH_PRIVATE_KEY }}
+      DEPLOY_SSH_KNOWN_HOSTS: ${{ secrets.DEPLOY_SSH_KNOWN_HOSTS }}
+      FITBEST_PRODUCTION_ENV: ${{ secrets.FITBEST_PRODUCTION_ENV }}
+      FITBEST_IMAGE_NAMESPACE: ghcr.io/${{ github.repository }}
+      FITBEST_RELEASE_TAG: sha-${{ github.sha }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Transfer release and deploy
+        run: bash fitbest-server/deploy/github-actions-deploy.sh
