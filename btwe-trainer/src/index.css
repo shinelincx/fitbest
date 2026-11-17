@@ -1,0 +1,167 @@
+@import "tailwindcss";
+@import "@fontsource/space-grotesk/600.css";
+@import "@fontsource/space-grotesk/700.css";
+@import "@fontsource/dm-sans/400.css";
+@import "@fontsource/dm-sans/500.css";
+@import "@fontsource/dm-sans/700.css";
+@import "@fontsource/jetbrains-mono/500.css";
+@import "@fontsource/jetbrains-mono/700.css";
+
+@theme {
+  --color-bg: #0a0a0b;
+  --color-surface: #16161a;
+  --color-surface-2: #1f1f25;
+  --color-border: #2a2a33;
+  --color-text: #f5f5f7;
+  --color-text-sub: #9ca3af;
+  --color-primary: #a3e635;
+  --color-primary-dark: #65a30d;
+  --color-primary-glow: rgba(163, 230, 53, 0.35);
+  --color-accent: #22d3ee;
+  --color-success: #34d399;
+  --color-warning: #fbbf24;
+  --color-danger: #f87171;
+
+  --font-display: "Space Grotesk", "PingFang SC", "Microsoft YaHei", sans-serif;
+  --font-body: "DM Sans", "PingFang SC", "Microsoft YaHei", system-ui, sans-serif;
+  --font-mono: "JetBrains Mono", "SF Mono", Menlo, monospace;
+
+  --radius-sm: 8px;
+  --radius-md: 14px;
+  --radius-lg: 20px;
+
+  --shadow-card: 0 8px 32px rgba(0, 0, 0, 0.4);
+  --shadow-glow: 0 0 24px var(--color-primary-glow);
+}
+
+* {
+  -webkit-tap-highlight-color: transparent;
+}
+
+html,
+body,
+#root {
+  height: 100%;
+  height: 100dvh;
+}
+
+body {
+  margin: 0;
+  font-family: var(--font-body);
+  background-color: var(--color-bg);
+  color: var(--color-text);
+  -webkit-font-smoothing: antialiased;
+  overscroll-behavior: none;
+}
+
+/* Background atmosphere: subtle radial glow + grid texture */
+body::before {
+  content: "";
+  position: fixed;
+  inset: 0;
+  pointer-events: none;
+  z-index: 0;
+  background:
+    radial-gradient(circle at 50% -10%, rgba(163, 230, 53, 0.12), transparent 55%),
+    radial-gradient(circle at 100% 100%, rgba(34, 211, 238, 0.06), transparent 50%);
+}
+
+::-webkit-scrollbar {
+  width: 0;
+  height: 0;
+}
+
+/* Page load staggered reveal */
+@keyframes revealUp {
+  from {
+    opacity: 0;
+    transform: translateY(12px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.reveal {
+  animation: revealUp 0.5s cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+.reveal-1 { animation-delay: 0.04s; }
+.reveal-2 { animation-delay: 0.1s; }
+.reveal-3 { animation-delay: 0.16s; }
+.reveal-4 { animation-delay: 0.22s; }
+.reveal-5 { animation-delay: 0.28s; }
+.reveal-6 { animation-delay: 0.34s; }
+
+@keyframes pulseGlow {
+  0%, 100% { box-shadow: 0 0 0 0 var(--color-primary-glow); }
+  50% { box-shadow: 0 0 0 12px rgba(163, 230, 53, 0); }
+}
+.pulse-glow {
+  animation: pulseGlow 1.6s ease-out infinite;
+}
+
+/* ===== AI 数字人动画 ===== */
+/* 眨眼 */
+@keyframes dhBlink {
+  0%, 92%, 100% { transform: scaleY(1); }
+  96% { transform: scaleY(0.1); }
+}
+.dh-eye {
+  animation: dhBlink 4.5s ease-in-out infinite;
+}
+
+/* 嘴巴说话张合（通过 scaleY 变形） */
+@keyframes dhTalk {
+  0%, 100% { transform: scaleY(0.7); }
+  50% { transform: scaleY(1.6); }
+}
+.dh-mouth {
+  animation: dhTalk 0.32s ease-in-out infinite;
+}
+
+/* 说话声波条 */
+@keyframes dhBar {
+  0%, 100% { height: 4px; }
+  50% { height: 16px; }
+}
+.dh-bar {
+  animation: dhBar 0.5s ease-in-out infinite;
+}
+
+/* 打字指示器 */
+@keyframes dhDot {
+  0%, 60%, 100% { transform: translateY(0); opacity: 0.4; }
+  30% { transform: translateY(-3px); opacity: 1; }
+}
+.dh-dot {
+  animation: dhDot 1s ease-in-out infinite;
+}
+
+/* AI 教练气泡弹入 */
+@keyframes coachPop {
+  0% { opacity: 0; transform: translateY(6px) scale(0.97); }
+  60% { opacity: 1; transform: translateY(-2px) scale(1.01); }
+  100% { opacity: 1; transform: translateY(0) scale(1); }
+}
+.coach-pop {
+  animation: coachPop 0.45s cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+
+/* Toast 弹入 */
+@keyframes toastPop {
+  0% { opacity: 0; transform: translate(-50%, 8px); }
+  100% { opacity: 1; transform: translate(-50%, 0); }
+}
+.toast-pop {
+  animation: toastPop 0.28s cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+
+/* 底部弹层 */
+@keyframes sheetUp {
+  0% { opacity: 0; transform: translateY(24px); }
+  100% { opacity: 1; transform: translateY(0); }
+}
+.sheet-up {
+  animation: sheetUp 0.32s cubic-bezier(0.22, 1, 0.36, 1) both;
+}

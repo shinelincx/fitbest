@@ -1,0 +1,69 @@
+services:
+  postgres:
+    image: docker.m.daocloud.io/library/postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: fitbest
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-fitbest}
+      POSTGRES_DB: fitbest
+    volumes:
+      - pg_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U fitbest -d fitbest"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+    networks: [fitbest-net]
+
+  redis:
+    image: docker.m.daocloud.io/library/redis:7-alpine
+    restart: unless-stopped
+    command: ["redis-server", "--appendonly", "yes"]
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+    networks: [fitbest-net]
+
+  fitbest-server:
+    build: .
+    restart: unless-stopped
+    # .env 提供全部业务配置（JWT 密钥 / 验证码策略 / 公开地址 / 短信等），必须注入
+    env_file:
+      - .env
+    environment:
+      JDBC_DATABASE_URL: jdbc:postgresql://postgres:5432/fitbest?stringtype=unspecified
+      DB_USERNAME: fitbest
+      DB_PASSWORD: ${POSTGRES_PASSWORD:-fitbest}
+      REDIS_URL: redis://redis:6379
+      FITBEST_WEB_ROOT: /opt/fitbest/web
+      CORS_ALLOWED_ORIGINS: ${CORS_ALLOWED_ORIGINS:-*}
+    volumes:
+      # 宿主机静态站根目录（7 个站点产物），只读挂载
+      - ${FITBEST_WEB_DIR:-./web}:/opt/fitbest/web:ro
+    ports:
+      # 对外端口由 HOST_PORT 控制（默认 8080；生产通过 nginx 反代）
+      - "${HOST_PORT:-8080}:8080"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "http://127.0.0.1:8080/actuator/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 30s
+    networks: [fitbest-net]
+
+volumes:
+  pg_data:
+  redis_data:
+
+networks:
+  fitbest-net:
+    name: fitbest-net

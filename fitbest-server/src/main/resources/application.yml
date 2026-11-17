@@ -1,0 +1,97 @@
+server:
+  port: 8080
+  # Nginx 反代场景信任 X-Forwarded-* 头（真实 IP / 协议）
+  forward-headers-strategy: framework
+
+spring:
+  application:
+    name: fitbest-server
+  threads:
+    virtual:
+      # JDK21 运行时启用虚拟线程（I/O 密集友好）；JDK17 自动忽略
+      enabled: true
+  datasource:
+    # stringtype=unspecified：让 PG 对字符串参数按目标列类型隐式转换（枚举列 AdminRole 含 'super' 值，
+    # Java 关键字无法作枚举常量名，admin role 统一按 String 映射）
+    url: ${JDBC_DATABASE_URL:jdbc:postgresql://localhost:5432/fitbest?stringtype=unspecified}
+    username: ${DB_USERNAME:fitbest}
+    password: ${DB_PASSWORD:fitbest}
+    hikari:
+      maximum-pool-size: 10
+  jpa:
+    hibernate:
+      # schema 全部由 Flyway 管理，禁止 Hibernate 改动
+      ddl-auto: none
+    open-in-view: false
+    properties:
+      # 时间戳统一按 UTC 读写，与 Node/Prisma 行为一致（实体统一使用 LocalDateTime 存 UTC 墙钟）
+      hibernate.jdbc.time_zone: UTC
+      hibernate.type.java_time_use_direct_jdbc: true
+  flyway:
+    enabled: true
+    # 接管已有数据库（Prisma 建立的旧库）时，V1-V5 视为已应用（baseline-version=5）；
+    # 全新空库则按序完整执行 V1-V5。此后一切变更从 V6 起走 Flyway。
+    baseline-on-migrate: true
+    baseline-version: "5"
+  data:
+    redis:
+      url: ${REDIS_URL:redis://localhost:6379}
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health
+  endpoint:
+    health:
+      probes:
+        enabled: true
+
+fitbest:
+  env: ${NODE_ENV:development}
+  public-base-url: ${PUBLIC_BASE_URL:http://localhost:8080}
+  web:
+    # 统一静态站根目录（容器内路径，宿主机挂载）
+    root: ${FITBEST_WEB_ROOT:/opt/fitbest/web}
+  cors:
+    # 阶段一保持与现网一致（全放行）；生产收紧示例：https://demo.thinkfit.cn
+    allowed-origins: ${CORS_ALLOWED_ORIGINS:*}
+  jwt:
+    access-secret: ${JWT_ACCESS_SECRET:dev-access-secret}
+    refresh-secret: ${JWT_REFRESH_SECRET:dev-refresh-secret}
+    admin-secret: ${JWT_ADMIN_SECRET:dev-admin-secret}
+    access-ttl: ${JWT_ACCESS_TTL:15m}
+    refresh-ttl: ${JWT_REFRESH_TTL:30d}
+  auth:
+    code-ttl: ${AUTH_CODE_TTL:300}
+    cooldown: ${AUTH_CODE_COOLDOWN:60}
+    daily-limit: ${AUTH_CODE_DAILY_LIMIT:10}
+    dev-return-code: ${AUTH_DEV_RETURN_CODE:false}
+    dev-phone-allowlist: ${AUTH_DEV_PHONE_ALLOWLIST:}
+  qr:
+    secret: ${QR_SIGN_SECRET:dev-qr-secret}
+  wechat:
+    app-id: ${WECHAT_APP_ID:}
+    app-secret: ${WECHAT_APP_SECRET:}
+    web-app-id: ${WECHAT_WEB_APP_ID:}
+    web-app-secret: ${WECHAT_WEB_APP_SECRET:}
+  aliyun:
+    access-key-id: ${ALIYUN_ACCESS_KEY_ID:}
+    access-key-secret: ${ALIYUN_ACCESS_KEY_SECRET:}
+    sms-sign-name: ${ALIYUN_SMS_SIGN_NAME:FITBEST}
+    sms-template-login: ${ALIYUN_SMS_TEMPLATE_LOGIN:}
+    sms-template-bind: ${ALIYUN_SMS_TEMPLATE_BIND:}
+  mail:
+    # 通用 SMTP（腾讯企业邮 smtp.exmail.qq.com / QQ smtp.qq.com / 网易 smtp.163.com 等）
+    host: ${MAIL_SMTP_HOST:}
+    port: ${MAIL_SMTP_PORT:465}
+    ssl: ${MAIL_SMTP_SSL:true}
+    username: ${MAIL_SMTP_USERNAME:}
+    password: ${MAIL_SMTP_PASSWORD:}
+    from: ${MAIL_FROM:}
+    from-name: ${MAIL_FROM_NAME:FITBEST}
+  llm:
+    api-base: ${LLM_API_BASE:https://api.openai.com/v1}
+    api-key: ${LLM_API_KEY:}
+    model: ${LLM_MODEL:gpt-4o-mini}
+    timeout-ms: ${LLM_TIMEOUT_MS:20000}

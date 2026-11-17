@@ -1,0 +1,13 @@
+ARG NODE_IMAGE=docker.m.daocloud.io/library/node:24-bookworm-slim
+FROM ${NODE_IMAGE} AS build
+WORKDIR /workspace
+COPY . .
+RUN set -eu; for app in fit-best-trainer hyrox-trainer btwe-trainer fit-best-admin; do \
+      (cd "$app" && npm ci --no-audit --no-fund); \
+    done
+RUN node fitbest-server/deploy/build-web.mjs /bundle
+
+FROM ${NODE_IMAGE}
+COPY --from=build /bundle /bundle
+COPY fitbest-server/deploy/publish-web.sh /publish-web.sh
+ENTRYPOINT ["sh", "/publish-web.sh"]

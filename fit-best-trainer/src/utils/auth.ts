@@ -1,0 +1,540 @@
+// 账号体系 —— 双轨实现：
+//  · 云端登录（短信 / 邮箱 / 密码）：走真实后端 /fit-best/api/v1，token 与 hyrox/btwe 站点同域共享（SSO）
+//  · 游客与本地演示：账号与数据保存在 localStorage（fitbest 命名空间）
+// 所有导出签名与原演示版保持一致，页面层零改动。
+
+import { loadJSON, removeKey, saveJSON } from './storage'
+import i18n from '../i18n'
+import { ApiError, clearTokens, isAuthed, request, setTokens } from '../api/client'
+
+export interface Account {
+  id: string
+  phone: string
+  email?: string
+  wechatOpenid?: string
+  wechatNickname?: string
+  nickname: string
+  passwordHash: string
+  createdAt: string
+  avatar?: string
+  gender?: 'male' | 'female' | 'other'
+  birthYear?: number
+  heightCm?: number
+  weightKg?: number
+  goalSessions?: number
+  goalMinutes?: number
+}
+
+export type ProfilePatch = Partial<
+  Pick<
+    Account,
+    'nickname' | 'avatar' | 'gender' | 'birthYear' | 'heightCm' | 'weightKg' | 'goalSessions' | 'goalMinutes'
+  >
+>
+
+export type IdentityKind = 'phone' | 'email' | 'wechat'
+
+const USERS_KEY = 'fitbest:users'
+const SESSION_KEY = 'fitbest:session'
+const CODES_KEY = 'fitbest:demo-codes'
+/** 云端账号资料缓存（云端登录后供同步的 getSessionUser 使用） */
+const CLOUD_ACCOUNT_KEY = 'fitbest:cloud-account'
+/** 云端会话标记前缀（SESSION_KEY = cloud:<userId>） */
+const CLOUD_PREFIX = 'cloud:'
+
+export const PHONE_RE = /^1[3-9]\d{9}$/
+export const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
+
+export const DEMO_CODE = '123456'
+
+function readUsers(): Account[] {
+  return loadJSON<Account[]>(USERS_KEY, [])
+}
+
+function writeUsers(list: Account[]) {
+  saveJSON(USERS_KEY, list)
+}
+
+async function hashPassword(password: string): Promise<string> {
+  const raw = `fitbest:v1:${password}`
+  if (globalThis.crypto?.subtle) {
+    const digest = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(raw))
+    return Array.from(new Uint8Array(digest))
+      .map((b) => b.toString(16).padStart(2, '0'))
+      .join('')
+  }
+  return `plain:${raw}`
+}
+
+export function normalizeEmail(email: string): string {
+  return email.trim().toLowerCase()
+}
+
+/** 当前是否为云端登录会话 */
+export function isCloudAuthed(): boolean {
+  return isCloudAccount() && isAuthed()
+}
+
+/** 凭证失效后仍保留账号归属，重新登录时继续补传。 */
+export function isCloudAccount(): boolean {
+  const id = loadJSON<string | null>(SESSION_KEY, null)
+  return id !== null && id.startsWith(CLOUD_PREFIX)
+}
+
+function setSession(id: string) {
+  saveJSON(SESSION_KEY, id)
+}
+
+function readCloudAccount(): Account | null {
+  return loadJSON<Account | null>(CLOUD_ACCOUNT_KEY, null)
+}
+
+function writeCloudAccount(account: Account) {
+  saveJSON(CLOUD_ACCOUNT_KEY, account)
+  setSession(CLOUD_PREFIX + account.id)
+}
+
+export function getSessionUser(): Account | null {
+  const id = loadJSON<string | null>(SESSION_KEY, null)
+  if (!id) return null
+  if (id.startsWith(CLOUD_PREFIX)) return readCloudAccount()
+  return readUsers().find((u) => u.id === id) ?? null
+}
+
+export function getLocalGuestAccount(): Account {
+  const users = readUsers()
+  const existing = users.find((user) => user.id === 'guest')
+  if (existing) {
+    setSession(existing.id)
+    return existing
+  }
+  const account: Account = {
+    id: 'guest',
+    phone: '',
+    nickname: i18n.t('FITBEST 训练者'),
+    passwordHash: '',
+    createdAt: new Date().toISOString(),
+  }
+  writeUsers([...users, account])
+  setSession(account.id)
+  return account
+}
+
+export function currentUserId(): string | null {
+  return getSessionUser()?.id ?? null
+}
+
+export function maskPhone(phone: string): string {
+  if (!phone) return ''
+  return phone.replace(/^(\d{3})\d{4}(\d{4})$/, '$1****$2')
+}
+
+export function maskEmail(email?: string): string {
+  if (!email) return ''
+  const [name, domain] = email.split('@')
+  if (!domain) return email
+  return `${name.slice(0, 2)}***@${domain}`
+}
+
+export function maskContact(account: Pick<Account, 'phone' | 'email'>): string {
+  if (account.phone) return maskPhone(account.phone)
+  if (account.email) return maskEmail(account.email)
+  return 'FITBEST 训练者'
+}
+
+// —— 后端用户档案 → 本地 Account 映射 ——
+
+interface CloudProfile {
+  id: string
+  nickname: string
+  avatar?: string | null
+  gender?: string | null
+  birthYear?: number | null
+  heightCm?: number | null
+  weightKg?: number | null
+  identities: { phone?: string | null; email?: string | null; wechat?: string | null }
+  hasPassword: boolean
+  goals: { weeklySessions: number; weeklyMinutes: number }
+}
+
+function toAccount(p: CloudProfile): Account {
+  return {
+    id: p.id,
+    phone: p.identities.phone ?? '',
+    email: p.identities.email ?? undefined,
+    wechatOpenid: p.identities.wechat ?? undefined,
+    nickname: p.nickname,
+    passwordHash: p.hasPassword ? 'cloud:**' : '',
+    createdAt: new Date().toISOString(),
+    avatar: p.avatar ?? undefined,
+    gender: (p.gender as Account['gender']) ?? undefined,
+    birthYear: p.birthYear ?? undefined,
+    heightCm: p.heightCm ?? undefined,
+    weightKg: p.weightKg ?? undefined,
+    goalSessions: p.goals?.weeklySessions ?? 0,
+    goalMinutes: p.goals?.weeklyMinutes ?? 0,
+  }
+}
+
+interface LoginResult {
+  accessToken: string
+  refreshToken: string
+  user: CloudProfile
+}
+
+async function cloudLogin(result: LoginResult): Promise<Account> {
+  setTokens(result.accessToken, result.refreshToken)
+  const account = toAccount(result.user)
+  writeCloudAccount(account)
+  return account
+}
+
+// —— 验证码 ——
+
+type CodeEntry = { code: string; expiresAt: number }
+
+function codeKey(purpose: 'sms' | 'email', target: string): string {
+  return `${purpose}:${target}`
+}
+
+function readCodes(): Record<string, CodeEntry> {
+  return loadJSON<Record<string, CodeEntry>>(CODES_KEY, {})
+}
+
+function issueCode(purpose: 'sms' | 'email', target: string): string {
+  const codes = readCodes()
+  codes[codeKey(purpose, target)] = { code: DEMO_CODE, expiresAt: Date.now() + 5 * 60 * 1000 }
+  saveJSON(CODES_KEY, codes)
+  return DEMO_CODE
+}
+
+function consumeCode(purpose: 'sms' | 'email', target: string, code: string) {
+  const key = codeKey(purpose, target)
+  const codes = readCodes()
+  const entry = codes[key]
+  if (!entry) throw new Error('请先获取验证码')
+  if (Date.now() > entry.expiresAt) {
+    delete codes[key]
+    saveJSON(CODES_KEY, codes)
+    throw new Error('验证码已过期，请重新获取')
+  }
+  if (code.trim() !== entry.code) throw new Error('验证码不正确')
+  delete codes[key]
+  saveJSON(CODES_KEY, codes)
+}
+
+/** 发送短信验证码：登录态无关，统一走后端（未配置短信时后端返回可读错误） */
+export async function sendSmsCode(phone: string): Promise<string> {
+  const p = phone.trim()
+  if (!PHONE_RE.test(p)) throw new Error('请输入正确的 11 位手机号')
+  try {
+    const res = await request<{ devCode?: string }>('/auth/sms/send', {
+      method: 'POST',
+      body: { phone: p, scene: 'login' },
+      noRefresh: true,
+    })
+    return res?.devCode ?? ''
+  } catch (e) {
+    // 短信服务未配置等场景回落本地演示验证码（仅游客环境可用）
+    if (e instanceof ApiError && e.code === 400) {
+      issueCode('sms', p)
+      return DEMO_CODE
+    }
+    throw e
+  }
+}
+
+export async function sendEmailCode(email: string): Promise<string> {
+  const e = normalizeEmail(email)
+  if (!EMAIL_RE.test(e)) throw new Error('请输入正确的邮箱地址')
+  try {
+    const res = await request<{ devCode?: string }>('/auth/email/send', {
+      method: 'POST',
+      body: { email: e, scene: 'login' },
+      noRefresh: true,
+    })
+    return res?.devCode ?? ''
+  } catch (err) {
+    if (err instanceof ApiError && err.code === 400) {
+      issueCode('email', e)
+      return DEMO_CODE
+    }
+    throw err
+  }
+}
+
+// —— 本地账号（游客 / 演示遗留数据）——
+
+// —— 注册 / 登录（云端）——
+
+export async function registerAccount(input: {
+  phone: string
+  password: string
+  nickname: string
+}): Promise<Account> {
+  const phone = input.phone.trim()
+  if (!PHONE_RE.test(phone)) throw new Error('请输入正确的 11 位手机号')
+  if (input.password.length < 6) throw new Error('密码至少 6 位')
+  const result = await request<LoginResult>('/auth/password/register', {
+    method: 'POST',
+    body: { phone, password: input.password, device: 'trainer-web' },
+    noRefresh: true,
+  })
+  return cloudLogin(result)
+}
+
+export async function loginAccount(phone: string, password: string): Promise<Account> {
+  const result = await request<LoginResult>('/auth/password/login', {
+    method: 'POST',
+    body: { account: phone.trim(), password, device: 'trainer-web' },
+    noRefresh: true,
+  })
+  return cloudLogin(result)
+}
+
+export async function loginWithSms(phone: string, code: string): Promise<Account> {
+  const p = phone.trim()
+  if (!PHONE_RE.test(p)) throw new Error('请输入正确的 11 位手机号')
+  const result = await request<LoginResult>('/auth/sms/login', {
+    method: 'POST',
+    body: { phone: p, code: code.trim(), device: 'trainer-web' },
+    noRefresh: true,
+  })
+  return cloudLogin(result)
+}
+
+export async function loginWithEmail(email: string, code: string): Promise<Account> {
+  const e = normalizeEmail(email)
+  if (!EMAIL_RE.test(e)) throw new Error('请输入正确的邮箱地址')
+  const result = await request<LoginResult>('/auth/email/login', {
+    method: 'POST',
+    body: { email: e, code: code.trim(), device: 'trainer-web' },
+    noRefresh: true,
+  })
+  return cloudLogin(result)
+}
+
+/** 云端校验密码：以“将密码改为其自身”的方式验证（后端无独立验证端点，副作用仅为刷新哈希） */
+export async function verifyPassword(id: string, password: string): Promise<boolean> {
+  if (id.startsWith(CLOUD_PREFIX)) {
+    try {
+      await request('/me/password', { method: 'PUT', body: { password, oldPassword: password } })
+      return true
+    } catch {
+      return false
+    }
+  }
+  const user = readUsers().find((u) => u.id === id)
+  if (!user || !user.passwordHash) return false
+  return user.passwordHash === (await hashPassword(password))
+}
+
+// —— 微信（Web 端 OAuth 接入前暂不开放云端微信登录）——
+
+export async function loginWithWechat(): Promise<Account | null> {
+  throw new Error(i18n.t('微信登录即将开放，请先使用手机号或邮箱登录'))
+}
+
+export async function loginWithWechatPhone(_phone: string, _code: string): Promise<Account> {
+  throw new Error(i18n.t('微信登录即将开放，请先使用手机号或邮箱登录'))
+}
+
+export async function bindEmail(id: string, email: string, code: string): Promise<Account> {
+  const e = normalizeEmail(email)
+  if (!EMAIL_RE.test(e)) throw new Error('请输入正确的邮箱地址')
+  if (!id.startsWith(CLOUD_PREFIX)) {
+    consumeCode('email', e, code)
+    const users = readUsers()
+    const index = users.findIndex((u) => u.id === id)
+    if (index < 0) throw new Error('账号不存在，请重新登录')
+    if (users.some((u) => u.id !== id && u.email === e)) throw new Error('该邮箱已绑定其他账号')
+    const next = { ...users[index], email: e }
+    const list = [...users]
+    list[index] = next
+    writeUsers(list)
+    return next
+  }
+  const profile = await request<CloudProfile>('/me/identities/email', {
+    method: 'POST',
+    body: { email: e, code: code.trim() },
+  })
+  const account = toAccount(profile)
+  writeCloudAccount(account)
+  return account
+}
+
+export async function bindPhone(id: string, phone: string, code: string): Promise<Account> {
+  const p = phone.trim()
+  if (!PHONE_RE.test(p)) throw new Error('请输入正确的 11 位手机号')
+  if (!id.startsWith(CLOUD_PREFIX)) {
+    consumeCode('sms', p, code)
+    const users = readUsers()
+    const index = users.findIndex((u) => u.id === id)
+    if (index < 0) throw new Error('账号不存在，请重新登录')
+    if (users.some((u) => u.id !== id && u.phone === p)) throw new Error('该手机号已绑定其他账号')
+    const current = users[index]
+    if (current.phone && current.phone !== p) throw new Error('手机号绑定后暂不支持自助换绑')
+    const next = { ...current, phone: p }
+    const list = [...users]
+    list[index] = next
+    writeUsers(list)
+    return next
+  }
+  const profile = await request<CloudProfile>('/me/identities/phone', {
+    method: 'POST',
+    body: { phone: p, code: code.trim() },
+  })
+  const account = toAccount(profile)
+  writeCloudAccount(account)
+  return account
+}
+
+export async function bindWechat(_id: string): Promise<Account> {
+  throw new Error(i18n.t('微信绑定即将开放，敬请期待'))
+}
+
+function methodCount(account: Account): number {
+  return [account.phone, account.email, account.wechatOpenid].filter(Boolean).length
+}
+
+export async function unbindEmail(id: string): Promise<Account> {
+  if (!id.startsWith(CLOUD_PREFIX)) {
+    const users = readUsers()
+    const index = users.findIndex((u) => u.id === id)
+    if (index < 0) throw new Error('账号不存在，请重新登录')
+    if (!users[index].email) return users[index]
+    if (methodCount(users[index]) <= 1) throw new Error('至少保留一种登录方式')
+    const next = { ...users[index], email: undefined }
+    const list = [...users]
+    list[index] = next
+    writeUsers(list)
+    return next
+  }
+  const profile = await request<CloudProfile>('/me/identities/email', { method: 'DELETE' })
+  const account = toAccount(profile)
+  writeCloudAccount(account)
+  return account
+}
+
+export async function unbindWechat(id: string): Promise<Account> {
+  if (!id.startsWith(CLOUD_PREFIX)) {
+    const users = readUsers()
+    const index = users.findIndex((u) => u.id === id)
+    if (index < 0) throw new Error('账号不存在，请重新登录')
+    if (!users[index].wechatOpenid) return users[index]
+    if (methodCount(users[index]) <= 1) throw new Error('至少保留一种登录方式')
+    const next = { ...users[index], wechatOpenid: undefined, wechatNickname: undefined }
+    const list = [...users]
+    list[index] = next
+    writeUsers(list)
+    return next
+  }
+  const profile = await request<CloudProfile>('/me/identities/wechat', { method: 'DELETE' })
+  const account = toAccount(profile)
+  writeCloudAccount(account)
+  return account
+}
+
+export async function logoutAccount(): Promise<void> {
+  const id = loadJSON<string | null>(SESSION_KEY, null)
+  if (id?.startsWith(CLOUD_PREFIX)) {
+    const refresh = localStorage.getItem('fitbest:refresh')
+    try {
+      await request('/auth/logout', { method: 'POST', body: refresh ? { refreshToken: refresh } : {} })
+    } catch {
+      // 令牌已失效时忽略
+    }
+    clearTokens()
+    removeKey(CLOUD_ACCOUNT_KEY)
+  }
+  removeKey(SESSION_KEY)
+}
+
+export async function updateAccount(id: string, patch: ProfilePatch): Promise<Account> {
+  if (!id.startsWith(CLOUD_PREFIX)) {
+    const users = readUsers()
+    const index = users.findIndex((u) => u.id === id)
+    if (index < 0) throw new Error('账号不存在，请重新登录')
+    const next = { ...users[index], ...patch }
+    const list = [...users]
+    list[index] = next
+    writeUsers(list)
+    return next
+  }
+
+  const profileBody: Record<string, unknown> = {}
+  if (patch.nickname !== undefined) profileBody.nickname = patch.nickname
+  if (patch.avatar !== undefined) profileBody.avatar = patch.avatar
+  if (patch.gender !== undefined) profileBody.gender = patch.gender
+  if (patch.birthYear !== undefined) profileBody.birthYear = patch.birthYear
+  if (patch.heightCm !== undefined) profileBody.heightCm = patch.heightCm
+  if (patch.weightKg !== undefined) profileBody.weightKg = patch.weightKg
+  let profile: CloudProfile | null = null
+  if (Object.keys(profileBody).length > 0) {
+    profile = await request<CloudProfile>('/me', { method: 'PATCH', body: profileBody })
+  }
+  if (patch.goalSessions !== undefined || patch.goalMinutes !== undefined) {
+    const current = readCloudAccount()
+    profile = await request<CloudProfile>('/me/goals', {
+      method: 'PATCH',
+      body: {
+        weeklySessions: patch.goalSessions ?? current?.goalSessions ?? 0,
+        weeklyMinutes: patch.goalMinutes ?? current?.goalMinutes ?? 0,
+      },
+    })
+  }
+  if (!profile) {
+    const refreshed = await request<CloudProfile>('/me')
+    profile = refreshed
+  }
+  const account = toAccount(profile)
+  writeCloudAccount(account)
+  return account
+}
+
+export async function changePassword(id: string, oldPassword: string, newPassword: string): Promise<void> {
+  if (newPassword.length < 6) throw new Error('新密码至少 6 位')
+  if (id.startsWith(CLOUD_PREFIX)) {
+    await request('/me/password', { method: 'PUT', body: { password: newPassword, oldPassword } })
+    return
+  }
+  const users = readUsers()
+  const index = users.findIndex((u) => u.id === id)
+  if (index < 0) throw new Error('账号不存在，请重新登录')
+  if (!users[index].passwordHash) throw new Error('当前账号未设置密码')
+  if (users[index].passwordHash !== (await hashPassword(oldPassword))) throw new Error('原密码不正确')
+  const list = [...users]
+  list[index] = { ...users[index], passwordHash: await hashPassword(newPassword) }
+  writeUsers(list)
+}
+
+export async function setPassword(id: string, newPassword: string): Promise<void> {
+  if (newPassword.length < 6) throw new Error('密码至少 6 位')
+  if (id.startsWith(CLOUD_PREFIX)) {
+    await request('/me/password', { method: 'PUT', body: { password: newPassword } })
+    return
+  }
+  const users = readUsers()
+  const index = users.findIndex((u) => u.id === id)
+  if (index < 0) throw new Error('账号不存在，请重新登录')
+  const list = [...users]
+  list[index] = { ...users[index], passwordHash: await hashPassword(newPassword) }
+  writeUsers(list)
+}
+
+export async function deleteAccount(id: string, password?: string): Promise<void> {
+  if (id.startsWith(CLOUD_PREFIX)) {
+    await request('/me', {
+      method: 'DELETE',
+      body: password ? { password } : undefined,
+    })
+    clearTokens()
+    removeKey(CLOUD_ACCOUNT_KEY)
+    removeKey(SESSION_KEY)
+    return
+  }
+  writeUsers(readUsers().filter((u) => u.id !== id))
+  removeKey(`fitbest:sessions:${id}`)
+  removeKey(`fitbest:strength:${id}`)
+  if (loadJSON<string | null>(SESSION_KEY, null) === id) removeKey(SESSION_KEY)
+}

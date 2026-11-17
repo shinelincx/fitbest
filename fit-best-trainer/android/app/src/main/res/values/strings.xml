@@ -1,0 +1,7 @@
+<?xml version='1.0' encoding='utf-8'?>
+<resources>
+    <string name="app_name">FITBEST</string>
+    <string name="title_activity_main">FITBEST</string>
+    <string name="package_name">com.ifitbest.app</string>
+    <string name="custom_url_scheme">com.ifitbest.app</string>
+</resources>

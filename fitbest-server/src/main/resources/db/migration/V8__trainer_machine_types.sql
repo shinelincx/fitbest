@@ -1,0 +1,4 @@
+ALTER TYPE "MachineType" ADD VALUE IF NOT EXISTS 'spin';
+ALTER TYPE "MachineType" ADD VALUE IF NOT EXISTS 'elliptical';
+ALTER TYPE "MachineType" ADD VALUE IF NOT EXISTS 'upright';
+ALTER TYPE "MachineType" ADD VALUE IF NOT EXISTS 'stair';

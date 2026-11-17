@@ -1,0 +1,562 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+    <meta name="theme-color" content="#f5f6f7" />
+    <meta name="description" content="FITBEST — 让每一台智能器械，都懂你的训练。" />
+    <title>FITBEST · 智能器械训练</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link rel="preconnect" href="https://images.unsplash.com" />
+    <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;600;700&family=DM+Sans:wght@400;500;600;700&family=JetBrains+Mono:wght@500;700&display=swap" rel="stylesheet" />
+    <style>
+      :root {
+        --bg: #f5f6f7; --surface: #ffffff; --surface-alt: #0e0f11;
+        --border: #e3e6ea; --text: #0e0f11; --text-sub: #6b7280; --text-muted: #9ca3af;
+        --orange: #f8481f; --orange-dark: #c81e0c; --orange-soft: rgba(248,72,31,0.08);
+        --blue: #2563eb; --radius: 4px;
+      }
+      * { margin: 0; padding: 0; box-sizing: border-box; }
+      html { scroll-behavior: smooth; }
+      body {
+        font-family: "DM Sans", "PingFang SC", "Microsoft YaHei", system-ui, sans-serif;
+        background: var(--bg); color: var(--text);
+        -webkit-font-smoothing: antialiased;
+        line-height: 1.6; font-size: 15px;
+      }
+      a { text-decoration: none; color: inherit; }
+      button { font-family: inherit; cursor: pointer; border: none; background: none; color: inherit; }
+      img { display: block; max-width: 100%; }
+      .container { max-width: 1120px; margin: 0 auto; padding: 0 32px; }
+      .icon { width: 18px; height: 18px; stroke: currentColor; fill: none; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; flex-shrink: 0; }
+
+      /* Nav */
+      nav { position: sticky; top: 0; z-index: 100; background: rgba(245,246,247,0.92); backdrop-filter: blur(8px); border-bottom: 1px solid var(--border); }
+      .nav-inner { display: flex; align-items: center; justify-content: space-between; height: 60px; }
+      .logo { display: flex; align-items: center; gap: 10px; font-family: "Space Grotesk", sans-serif; font-weight: 700; font-size: 20px; letter-spacing: -0.03em; color: var(--text); }
+      .logo img { width: 34px; height: 34px; object-fit: contain; flex-shrink: 0; }
+      .nav-links { display: flex; gap: 36px; list-style: none; }
+      .nav-links a { font-size: 14px; font-weight: 500; color: var(--text-sub); }
+      .nav-links a:hover { color: var(--text); }
+      .nav-actions { display: flex; gap: 8px; align-items: center; }
+      .btn { display: inline-flex; align-items: center; gap: 6px; padding: 8px 18px; font-size: 14px; font-weight: 600; border-radius: var(--radius); transition: background 0.15s, color 0.15s; }
+      .btn-primary { background: var(--orange); color: #fff; }
+      .btn-primary:hover { background: var(--orange-dark); }
+      .btn-ghost { color: var(--text); }
+      .btn-ghost:hover { color: var(--orange); }
+      .btn-lg { padding: 12px 26px; font-size: 15px; }
+      .btn-outline { border: 1px solid var(--border); color: var(--text); background: transparent; }
+      .btn-outline:hover { border-color: var(--text); }
+      .hbg { display: none; width: 32px; height: 32px; padding: 6px; }
+      .hbg span { display: block; height: 2px; background: var(--text); margin-bottom: 5px; }
+
+      /* ==========================
+         Hero
+         ========================== */
+      .hero { padding: 72px 0 88px; }
+      .hero-grid { display: grid; grid-template-columns: 1.1fr 1fr; gap: 64px; align-items: center; }
+      .eyebrow { font-family: "JetBrains Mono", monospace; font-size: 12px; font-weight: 700; letter-spacing: 0.08em; color: var(--orange); text-transform: uppercase; padding-bottom: 12px; border-bottom: 1px solid var(--border); margin-bottom: 24px; }
+      h1 { font-family: "Space Grotesk", sans-serif; font-size: clamp(40px, 5.5vw, 62px); font-weight: 700; line-height: 1.05; letter-spacing: -0.03em; margin-bottom: 22px; }
+      h1 em { font-style: normal; color: var(--orange); background: linear-gradient(transparent 62%, rgba(248,72,31,0.18) 62%, rgba(248,72,31,0.18) 90%, transparent 90%); }
+      .hero-sub { font-size: 17px; color: var(--text-sub); margin-bottom: 34px; max-width: 480px; }
+      .hero-ctas { display: flex; gap: 10px; margin-bottom: 52px; }
+      .hero-stats { display: grid; grid-template-columns: repeat(3, 1fr); gap: 32px; padding-top: 24px; border-top: 1px solid var(--border); }
+      .stat-num { font-family: "Space Grotesk", sans-serif; font-size: 32px; font-weight: 700; letter-spacing: -0.02em; }
+      .stat-num.accent { color: var(--orange); }
+      .stat-label { font-size: 12px; font-weight: 500; color: var(--text-muted); margin-top: 4px; letter-spacing: 0.02em; }
+
+      .hero-visual { display: flex; justify-content: center; align-items: flex-end; gap: 18px; }
+      .phone {
+        width: 240px; height: 480px; background: var(--text); border-radius: 38px; padding: 9px; position: relative; flex-shrink: 0;
+      }
+      .phone-notch { position: absolute; top: 9px; left: 50%; transform: translateX(-50%); width: 96px; height: 20px; background: var(--text); border-radius: 0 0 12px 12px; z-index: 2; }
+      .phone-screen {
+        background: var(--bg); border-radius: 29px; width: 100%; height: 100%;
+        padding: 38px 14px 14px; display: flex; flex-direction: column; gap: 8px; font-size: 10px;
+      }
+      .ph-head { font-family: "Space Grotesk", sans-serif; font-weight: 700; font-size: 12px; display: flex; justify-content: space-between; align-items: center; }
+      .ph-card { background: #fff; border-radius: 7px; padding: 10px 12px; border: 1px solid var(--border); }
+      .ph-label { font-size: 9px; color: var(--text-sub); font-weight: 500; margin-bottom: 3px; letter-spacing: 0.02em; text-transform: uppercase; }
+      .ph-value { font-family: "Space Grotesk", sans-serif; font-size: 18px; font-weight: 700; letter-spacing: -0.01em; }
+      .ph-value.accent { color: var(--orange); }
+      .ph-row { display: flex; gap: 6px; }
+      .ph-row .ph-card { flex: 1; }
+      .ph-wave { display: flex; align-items: flex-end; gap: 2px; height: 34px; margin-top: 6px; }
+      .ph-wave span { flex: 1; background: var(--orange); border-radius: 1px; animation: wv 1.2s ease-in-out infinite; }
+      .ph-wave span:nth-child(1){animation-delay:0s;height:30%}.ph-wave span:nth-child(2){animation-delay:0.1s;height:60%}.ph-wave span:nth-child(3){animation-delay:0.2s;height:95%}.ph-wave span:nth-child(4){animation-delay:0.3s;height:70%}.ph-wave span:nth-child(5){animation-delay:0.4s;height:50%}.ph-wave span:nth-child(6){animation-delay:0.5s;height:88%}.ph-wave span:nth-child(7){animation-delay:0.6s;height:40%}.ph-wave span:nth-child(8){animation-delay:0.7s;height:65%}
+      @keyframes wv { 0%,100%{transform:scaleY(1)} 50%{transform:scaleY(0.35)} }
+
+      .hero-photo {
+        width: 220px; height: 420px; object-fit: cover; border-radius: var(--radius); border: 1px solid var(--border);
+        box-shadow: 0 8px 28px rgba(14,15,17,0.08);
+      }
+
+      /* ==========================
+         Section base
+         ========================== */
+      section { padding: 88px 0; }
+      .section-head { margin-bottom: 52px; max-width: 620px; }
+      .section-label { font-family: "JetBrains Mono", monospace; font-size: 12px; font-weight: 700; letter-spacing: 0.1em; color: var(--orange); text-transform: uppercase; margin-bottom: 16px; }
+      .section-title { font-family: "Space Grotesk", sans-serif; font-size: clamp(28px, 3.2vw, 40px); font-weight: 700; line-height: 1.2; letter-spacing: -0.02em; margin-bottom: 10px; }
+      .section-sub { font-size: 16px; color: var(--text-sub); }
+
+      /* ==========================
+         Pain Points
+         ========================== */
+      .pain { background: var(--surface); border-top: 1px solid var(--border); border-bottom: 1px solid var(--border); }
+      .pain-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 0; }
+      .pain-card { padding: 36px 32px; border-right: 1px solid var(--border); display: flex; flex-direction: column; }
+      .pain-card:last-child { border-right: none; }
+      .pain-card .pain-img {
+        width: 100%; height: 150px; object-fit: cover; border-radius: var(--radius);
+        border: 1px solid var(--border); margin-bottom: 20px;
+      }
+      .pain-card h3 { font-family: "Space Grotesk", sans-serif; font-size: 18px; font-weight: 700; margin-bottom: 10px; letter-spacing: -0.01em; }
+      .pain-card p { font-size: 14px; color: var(--text-sub); line-height: 1.7; flex: 1; }
+      .pain-res { margin-top: 18px; padding-top: 14px; border-top: 1px solid var(--border); font-size: 13px; font-weight: 600; color: var(--orange-dark); display: flex; align-items: center; gap: 6px; }
+
+      /* ==========================
+         Three Platforms
+         ========================== */
+      .platforms-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 24px; }
+      .plat-card { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); padding: 0; overflow: hidden; }
+      .plat-card .plat-img { width: 100%; height: 170px; object-fit: cover; }
+      .plat-body { padding: 28px 28px 32px; }
+      .plat-tag { font-family: "JetBrains Mono", monospace; font-size: 11px; font-weight: 700; letter-spacing: 0.08em; padding: 4px 10px; border-radius: 2px; display: inline-block; margin-bottom: 16px; }
+      .plat-card.app .plat-tag { background: #eff6ff; color: #1d4ed8; }
+      .plat-card.hd .plat-tag { background: var(--orange-soft); color: var(--orange-dark); }
+      .plat-card.pwa .plat-tag { background: #ecfdf5; color: #047857; }
+      .plat-card h3 { font-family: "Space Grotesk", sans-serif; font-size: 20px; font-weight: 700; margin-bottom: 10px; letter-spacing: -0.01em; }
+      .plat-card p { font-size: 14px; color: var(--text-sub); line-height: 1.7; margin-bottom: 18px; }
+      .plat-feats { list-style: none; display: flex; flex-direction: column; gap: 8px; }
+      .plat-feats li { font-size: 13px; color: var(--text); display: flex; align-items: flex-start; gap: 8px; }
+      .plat-feats li::before { content: ''; flex-shrink: 0; width: 4px; height: 4px; background: var(--orange); border-radius: 50%; margin-top: 7px; }
+
+      /* ==========================
+         Ecosystem
+         ========================== */
+      .eco { background: var(--surface); border-top: 1px solid var(--border); border-bottom: 1px solid var(--border); }
+      .eco-grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 24px; margin-bottom: 40px; }
+      .eco-card { padding: 32px; background: var(--bg); border: 1px solid var(--border); border-radius: var(--radius); }
+      .eco-cat { font-family: "JetBrains Mono", monospace; font-size: 11px; font-weight: 700; letter-spacing: 0.1em; color: var(--text-muted); text-transform: uppercase; margin-bottom: 14px; }
+      .eco-card h3 { font-family: "Space Grotesk", sans-serif; font-size: 20px; font-weight: 700; margin-bottom: 24px; letter-spacing: -0.01em; }
+      .eco-machines { display: grid; grid-template-columns: repeat(4, 1fr); gap: 16px; margin-bottom: 24px; }
+      .eco-machine {
+        display: flex; flex-direction: column; align-items: center; gap: 8px;
+        padding: 12px 6px; border: 1px solid var(--border); border-radius: var(--radius);
+        background: #fff; transition: border-color 0.15s;
+      }
+      .eco-machine:hover { border-color: var(--orange); }
+      .eco-machine img { width: 44px; height: 44px; object-fit: cover; border-radius: 2px; }
+      .eco-machine .label { font-size: 11px; font-weight: 500; color: var(--text-sub); text-align: center; line-height: 1.3; }
+      .eco-protos { display: flex; gap: 6px; flex-wrap: wrap; }
+      .eco-protos span { font-family: "JetBrains Mono", monospace; font-size: 11px; font-weight: 500; padding: 3px 8px; border: 1px solid var(--border); border-radius: 2px; color: var(--text-sub); }
+      .brands { padding: 32px; border: 1px solid var(--border); border-radius: var(--radius); display: flex; gap: 32px; justify-content: center; flex-wrap: wrap; align-items: center; }
+      .brands-label { font-size: 12px; color: var(--text-muted); font-weight: 600; letter-spacing: 0.08em; text-transform: uppercase; width: 100%; text-align: center; margin-bottom: 24px; }
+      .brands span { font-family: "Space Grotesk", sans-serif; font-weight: 700; color: var(--text-muted); font-size: 15px; transition: color 0.15s; }
+      .brands span:hover { color: var(--text); }
+
+      /* ==========================
+         AI Section (dark)
+         ========================== */
+      .ai { background: var(--surface-alt); color: #fff; }
+      .ai .section-label { color: #ff7a59; }
+      .ai .section-title { color: #fff; }
+      .ai .section-sub { color: rgba(255,255,255,0.5); }
+      .ai-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 64px; align-items: start; }
+      .ai-list { display: flex; flex-direction: column; gap: 20px; }
+      .ai-item { display: flex; gap: 18px; padding: 18px; border: 1px solid rgba(255,255,255,0.08); border-radius: var(--radius); }
+      .ai-num { font-family: "Space Grotesk", sans-serif; font-size: 26px; font-weight: 700; color: var(--orange); min-width: 38px; letter-spacing: -0.02em; }
+      .ai-item h4 { font-size: 15px; font-weight: 600; margin-bottom: 6px; }
+      .ai-item p { font-size: 13px; color: rgba(255,255,255,0.5); line-height: 1.6; }
+      .ai-visual { border: 1px solid rgba(255,255,255,0.1); border-radius: var(--radius); padding: 24px; }
+      .ai-msg { padding: 11px 15px; border-radius: 6px; font-size: 13px; margin-bottom: 10px; max-width: 85%; line-height: 1.6; }
+      .ai-msg.ai { background: rgba(255,255,255,0.06); color: rgba(255,255,255,0.85); }
+      .ai-msg.user { background: var(--orange); color: #fff; margin-left: auto; }
+      .ai-plan { background: #fff; color: var(--text); border-radius: var(--radius); padding: 18px; margin-top: 14px; }
+      .ai-plan h5 { font-family: "Space Grotesk", sans-serif; font-size: 14px; font-weight: 700; margin-bottom: 12px; color: var(--text); }
+      .ai-plan-row { display: flex; justify-content: space-between; padding: 7px 0; border-bottom: 1px dashed var(--border); font-size: 13px; }
+      .ai-plan-row:last-child { border-bottom: none; }
+      .ai-plan-row .day { font-family: "Space Grotesk", sans-serif; font-weight: 700; color: var(--orange); }
+
+      /* ==========================
+         Events
+         ========================== */
+      .events-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 24px; }
+      .ev-card { border: 1px solid var(--border); border-radius: var(--radius); overflow: hidden; background: var(--surface); }
+      .ev-cover { position: relative; height: 180px; overflow: hidden; }
+      .ev-cover img { width: 100%; height: 100%; object-fit: cover; }
+      .ev-cover::after { content: ''; position: absolute; inset: 0; background: linear-gradient(to top, rgba(0,0,0,0.25), transparent 50%); }
+      .ev-body { padding: 20px; }
+      .ev-body h4 { font-family: "Space Grotesk", sans-serif; font-size: 16px; font-weight: 700; margin-bottom: 10px; letter-spacing: -0.01em; }
+      .ev-cta { font-size: 13px; font-weight: 600; color: var(--orange); display: inline-flex; align-items: center; gap: 4px; }
+      .ev-cta:hover { color: var(--orange-dark); }
+
+      /* ==========================
+         CTA + Footer
+         ========================== */
+      .cta { background: var(--orange); color: #fff; padding: 68px 0; text-align: center; }
+      .cta h2 { font-family: "Space Grotesk", sans-serif; font-size: clamp(28px, 3.5vw, 40px); font-weight: 700; letter-spacing: -0.02em; margin-bottom: 10px; }
+      .cta p { font-size: 16px; opacity: 0.9; margin-bottom: 28px; }
+      .cta-actions { display: flex; gap: 10px; justify-content: center; flex-wrap: wrap; }
+      .btn-white { background: #fff; color: var(--orange-dark); }
+      .btn-white:hover { background: #f5f5f5; }
+      .btn-ghost-white { border: 1px solid rgba(255,255,255,0.5); color: #fff; }
+      .btn-ghost-white:hover { background: rgba(255,255,255,0.1); border-color: #fff; }
+
+      footer { background: var(--surface-alt); color: rgba(255,255,255,0.5); padding: 52px 0 28px; }
+      .ft-grid { display: grid; grid-template-columns: 2fr 1fr 1fr 1fr; gap: 48px; margin-bottom: 36px; }
+      .ft-brand .logo { color: #fff; margin-bottom: 12px; }
+      .ft-brand p { font-size: 14px; line-height: 1.7; max-width: 280px; }
+      .ft-col h5 { font-size: 12px; font-weight: 700; color: #fff; margin-bottom: 14px; letter-spacing: 0.08em; text-transform: uppercase; }
+      .ft-col ul { list-style: none; display: flex; flex-direction: column; gap: 10px; }
+      .ft-col a { font-size: 14px; color: rgba(255,255,255,0.5); }
+      .ft-col a:hover { color: var(--orange); }
+      .ft-bottom { padding-top: 20px; border-top: 1px solid rgba(255,255,255,0.08); display: flex; justify-content: space-between; align-items: center; font-size: 13px; }
+
+      /* Reveal */
+      .reveal { opacity: 0; transform: translateY(16px); transition: opacity 0.55s ease, transform 0.55s cubic-bezier(0.22,1,0.36,1); }
+      .reveal.v { opacity: 1; transform: translateY(0); }
+
+      /* Mobile */
+      @media (max-width: 900px) {
+        .hero { padding: 48px 0 56px; }
+        .hero-grid { grid-template-columns: 1fr; gap: 40px; }
+        .hero-visual { flex-direction: column; order: -1; align-items: center; }
+        .hero-photo { width: 240px; height: 220px; }
+        section { padding: 60px 0; }
+        .pain-grid { grid-template-columns: 1fr; }
+        .pain-card { border-right: none; border-bottom: 1px solid var(--border); }
+        .pain-card:last-child { border-bottom: none; }
+        .platforms-grid { grid-template-columns: 1fr; }
+        .eco-grid { grid-template-columns: 1fr; }
+        .eco-machines { grid-template-columns: repeat(3, 1fr); }
+        .ai-grid { grid-template-columns: 1fr; gap: 40px; }
+        .events-grid { grid-template-columns: 1fr; }
+        .ft-grid { grid-template-columns: 1fr 1fr; gap: 32px; }
+        .nav-links, .nav-actions .btn-ghost { display: none; }
+        .nav-links.open { display: flex; position: absolute; top: 60px; left: 0; right: 0; background: var(--bg); flex-direction: column; padding: 20px 32px; border-bottom: 1px solid var(--border); gap: 16px; }
+        .hbg { display: flex; flex-direction: column; justify-content: center; }
+      }
+      @media (max-width: 560px) {
+        .hero-stats { grid-template-columns: repeat(3, 1fr); gap: 16px; }
+        .stat-num { font-size: 24px; }
+        .eco-machines { grid-template-columns: repeat(2, 1fr); }
+        .ft-grid { grid-template-columns: 1fr; }
+        .ft-bottom { flex-direction: column; gap: 10px; text-align: center; }
+        .container { padding: 0 20px; }
+      }
+    </style>
+  </head>
+  <body id="top">
+
+    <!-- Navbar -->
+    <nav>
+      <div class="container nav-inner">
+        <a href="#top" class="logo">
+          <img src="logo.png" alt="FITBEST" />
+          FITBEST
+        </a>
+        <ul class="nav-links" id="navLinks">
+          <li><a href="#platforms">产品</a></li>
+          <li><a href="#ecosystem">器械生态</a></li>
+          <li><a href="#ai">AI 私教</a></li>
+          <li><a href="#events">赛事</a></li>
+          <li><a href="#download">下载</a></li>
+        </ul>
+        <div class="nav-actions">
+          <a href="/fitbest/" class="btn btn-ghost">PWA 体验</a>
+          <a href="#download" class="btn btn-primary">下载 APP</a>
+          <button class="hbg" id="hbg"><span></span><span></span><span></span></button>
+        </div>
+      </div>
+    </nav>
+
+    <!-- Hero -->
+    <section class="hero">
+      <div class="container hero-grid">
+        <div class="reveal">
+          <div class="eyebrow">FITBEST · 智能器械训练平台</div>
+          <h1>让每一台智能器械<br/>都<em>懂你的训练</em></h1>
+          <p class="hero-sub">从数据采集到 AI 私教，从力量插销到专项赛事 — FITBEST 把有氧、力量、赛事、AI 聚到一起。</p>
+          <div class="hero-ctas">
+            <a href="#download" class="btn btn-primary btn-lg">免费下载 APP</a>
+            <a href="/fitbest/" class="btn btn-outline btn-lg">网页版体验</a>
+          </div>
+        </div>
+        <div class="hero-visual reveal">
+          <div class="phone">
+            <div class="phone-notch"></div>
+            <div class="phone-screen">
+              <div class="ph-head"><span>FITBEST</span><span style="font-size:10px;color:var(--text-sub)">●●●</span></div>
+              <div class="ph-card">
+                <div class="ph-label">今日训练</div>
+                <div class="ph-value accent">跑步机 · 8.5 km</div>
+                <div class="ph-wave"><span></span><span></span><span></span><span></span><span></span><span></span><span></span><span></span></div>
+              </div>
+              <div class="ph-row">
+                <div class="ph-card"><div class="ph-label">心率</div><div class="ph-value">152</div></div>
+                <div class="ph-card"><div class="ph-label">功率</div><div class="ph-value">285W</div></div>
+              </div>
+              <div class="ph-row">
+                <div class="ph-card"><div class="ph-label">时长</div><div class="ph-value">32:15</div></div>
+                <div class="ph-card"><div class="ph-label">AI 评分</div><div class="ph-value accent">A+</div></div>
+              </div>
+            </div>
+          </div>
+          <img class="hero-photo" loading="lazy" alt="跑步机训练"
+               src="https://images.unsplash.com/photo-1534438327276-14e5300c3a48?w=440&auto=format&fit=crop&q=70" />
+        </div>
+      </div>
+    </section>
+
+    <!-- Pain Points -->
+    <section class="pain">
+      <div class="container">
+        <div class="section-head reveal">
+          <div class="section-label">为什么需要 FITBEST</div>
+          <h2 class="section-title">训练不该被器械割裂</h2>
+          <p class="section-sub">传统健身 APP 数据散落、力量训练全靠猜、训练没有目标。FITBEST 把它们聚到一起。</p>
+        </div>
+        <div class="pain-grid">
+          <div class="pain-card reveal">
+            <img class="pain-img" loading="lazy" alt="数据散落"
+                 src="https://images.unsplash.com/photo-1551698618-1dfe5d97d256?w=520&auto=format&fit=crop&q=70" />
+            <h3>数据散落各 APP</h3>
+            <p>不同品牌的跑步机、划船机、动感单车数据各自为政，无法统一沉淀和分析。</p>
+            <div class="pain-res">→ 连接兼容的 FTMS 器械，集中查看有氧训练记录</div>
+          </div>
+          <div class="pain-card reveal">
+            <img class="pain-img" loading="lazy" alt="力量训练"
+                 src="https://images.unsplash.com/photo-1517836357463-d25dfeac3438?w=520&auto=format&fit=crop&q=70" />
+            <h3>力量训练全靠猜</h3>
+            <p>重量、次数、组数全靠人工计数和记录，没有客观数据就没有进步。</p>
+            <div class="pain-res">→ 通过智能插销采集数据，记录力量训练</div>
+          </div>
+          <div class="pain-card reveal">
+            <img class="pain-img" loading="lazy" alt="AI 指导"
+                 src="https://images.unsplash.com/photo-1594381898411-846e7d193883?w=520&auto=format&fit=crop&q=70" />
+            <h3>想练不知道怎么练</h3>
+            <p>目标模糊，训练没有针对性，长期看不到进步就容易放弃。</p>
+            <div class="pain-res">→ 根据训练目标生成计划</div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- Three Platforms -->
+    <section id="platforms">
+      <div class="container">
+        <div class="section-head reveal">
+          <div class="section-label">三端联动</div>
+          <h2 class="section-title">手机、网页与场馆大屏</h2>
+          <p class="section-sub">训练网页版和 HD 版登录后可同步有氧器械记录。游客记录、力量训练记录和智能插销绑定保存在当前设备，力量记录可通过数据管理导出备份并手动导入。</p>
+        </div>
+        <div class="platforms-grid">
+          <div class="plat-card app reveal">
+            <img class="plat-img" loading="lazy" alt="手机 APP"
+                 src="https://images.unsplash.com/photo-1571019613454-1cb2f99b2d8b?w=720&auto=format&fit=crop&q=70" />
+            <div class="plat-body">
+              <div class="plat-tag">APP</div>
+              <h3>手机 APP</h3>
+              <p>FitBest 官方商店版支持通过蓝牙与 NFC 连接兼容的有氧器械。</p>
+              <ul class="plat-feats">
+                <li>有氧训练记录和运动报告</li>
+                <li><a href="#download">前往 App Store 或 Google Play</a></li>
+              </ul>
+            </div>
+          </div>
+          <div class="plat-card hd reveal">
+            <img class="plat-img" loading="lazy" alt="场馆大屏"
+                 src="https://images.unsplash.com/photo-1571902943202-507ec2618e8f?w=720&auto=format&fit=crop&q=70" />
+            <div class="plat-body">
+              <div class="plat-tag">HD 大屏</div>
+              <h3>场馆 HD 版</h3>
+              <p>面向健身房与工作室的大屏训练界面。</p>
+              <ul class="plat-feats">
+                <li>平板 / 大屏专用横屏布局</li>
+                <li><a href="/fitbest-hd/">打开 HD 训练</a></li>
+              </ul>
+            </div>
+          </div>
+          <div class="plat-card pwa reveal">
+            <img class="plat-img" loading="lazy" alt="PWA 网页"
+                 src="https://images.unsplash.com/photo-1498050108023-c5249f4df085?w=720&auto=format&fit=crop&q=70" />
+            <div class="plat-body">
+              <div class="plat-tag">PWA</div>
+              <h3>网页版</h3>
+              <p>无需下载。登录后可跨设备查看已同步的有氧器械记录。</p>
+              <ul class="plat-feats">
+                <li>在支持 Web Bluetooth 的浏览器中连接兼容器械</li>
+                <li><a href="/fitbest/">打开网页版</a></li>
+                <li>训练报告深度分析</li>
+                <li>一键分享成绩卡</li>
+              </ul>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- Ecosystem -->
+    <section class="eco" id="ecosystem">
+      <div class="container">
+        <div class="section-head reveal">
+          <div class="section-label">器械生态</div>
+          <h2 class="section-title">有氧器械与力量训练</h2>
+          <p class="section-sub">连接兼容的 FTMS 有氧器械和智能插销。力量记录与插销绑定保存在当前设备。</p>
+        </div>
+
+        <div class="eco-grid">
+          <div class="eco-card reveal">
+            <div class="eco-cat">AEROBIC</div>
+            <h3>有氧器械</h3>
+            <div class="eco-machines">
+              <div class="eco-machine"><img loading="lazy" alt="跑步机" src="https://images.unsplash.com/photo-1538805060514-97d9cc17730c?w=120&h=120&auto=format&fit=crop&q=60"/><span class="label">智能跑步机</span></div>
+              <div class="eco-machine"><img loading="lazy" alt="划船机" src="https://images.unsplash.com/photo-1517963879433-6ad2b056d712?w=120&h=120&auto=format&fit=crop&q=60"/><span class="label">划船机</span></div>
+              <div class="eco-machine"><img loading="lazy" alt="动感单车" src="https://images.unsplash.com/photo-1517836357463-d25dfeac3438?w=120&h=120&auto=format&fit=crop&q=60"/><span class="label">动感单车</span></div>
+              <div class="eco-machine"><img loading="lazy" alt="椭圆机" src="https://images.unsplash.com/photo-1518611012118-696072aa579a?w=120&h=120&auto=format&fit=crop&q=60"/><span class="label">椭圆机</span></div>
+              <div class="eco-machine"><img loading="lazy" alt="楼梯机" src="https://images.unsplash.com/photo-1593079831268-3381b0db4a77?w=120&h=120&auto=format&fit=crop&q=60"/><span class="label">楼梯机</span></div>
+              <div class="eco-machine"><img loading="lazy" alt="滑雪机" src="https://images.unsplash.com/photo-1518796746631-a6a7f45921c3?w=120&h=120&auto=format&fit=crop&q=60"/><span class="label">滑雪机</span></div>
+              <div class="eco-machine"><img loading="lazy" alt="心率带" src="https://images.unsplash.com/photo-1571019613454-1cb2f99b2d8b?w=120&h=120&auto=format&fit=crop&q=60"/><span class="label">心率带</span></div>
+              <div class="eco-machine"><img loading="lazy" alt="健身车" src="https://images.unsplash.com/photo-1526506118085-60ce8714f8c5?w=120&h=120&auto=format&fit=crop&q=60"/><span class="label">健身车</span></div>
+            </div>
+            <div class="eco-protos"><span>FTMS 5.0 / 6.0</span><span>ThinkFit 私有协议</span></div>
+          </div>
+
+          <div class="eco-card reveal">
+            <div class="eco-cat">STRENGTH</div>
+            <h3>力量训练</h3>
+            <div class="eco-machines">
+              <a class="eco-machine" href="/fitbest/#/pin"><img loading="lazy" alt="" src="https://images.unsplash.com/photo-1534438327276-14e5300c3a48?w=200&h=200&auto=format&fit=crop&q=60"/><span class="label">智能插销训练</span></a>
+              <a class="eco-machine" href="/fitbest/#/strength"><img loading="lazy" alt="" src="https://images.unsplash.com/photo-1571019613454-1cb2f99b2d8b?w=120&h=120&auto=format&fit=crop&q=60"/><span class="label">手动记录力量训练</span></a>
+            </div>
+            <div class="eco-protos"><span>BLE 5.x</span><span>NFC 一碰即连</span></div>
+          </div>
+        </div>
+
+        <div class="brands reveal">
+          <div class="brands-label">所有符合 FTMS 协议的器械均可连接 · 代表性品牌</div>
+          <span>Technogym</span><span>Precor</span><span>Life Fitness</span><span>舒华 SHUA</span><span>Matrix</span><span>Star Trac</span><span>Keiser</span><span>... + 100</span>
+        </div>
+      </div>
+    </section>
+
+    <!-- AI Section -->
+    <section class="ai" id="ai">
+      <div class="container">
+        <div class="section-head reveal">
+          <div class="section-label">AI 私教</div>
+          <h2 class="section-title">懂你的每一次训练</h2>
+          <p class="section-sub">根据目标、体能、器械类型和历史，生成专属计划、实时指导动作、赛后详细分析。</p>
+        </div>
+        <div class="ai-grid">
+          <div class="ai-list">
+            <div class="ai-item reveal"><div class="ai-num">01</div><div><h4>智能训练计划</h4><p>输入目标（减脂 / 增肌 / 耐力提升），AI 自动生成 7/14/30 天训练计划，动态调整强度。</p></div></div>
+            <div class="ai-item reveal"><div class="ai-num">02</div><div><h4>实时动作指导</h4><p>结合器械数据和传感器反馈，AI 在训练中实时提示节奏、强度和动作要点，降低受伤风险。</p></div></div>
+            <div class="ai-item reveal"><div class="ai-num">03</div><div><h4>训练报告分析</h4><p>每次训练后自动生成报告，包含功率曲线、心率区间、动作效率评分和进步趋势对比。</p></div></div>
+            <div class="ai-item reveal"><div class="ai-num">04</div><div><h4>专项 AI 模拟</h4><p>内置 HYROX、BTWE 等专项赛道模拟训练，让你不出门也能备战赛事。</p></div></div>
+          </div>
+          <div class="ai-visual reveal">
+            <div class="ai-msg user">想减脂，每周练 3 次，有跑步机和划船机。</div>
+            <div class="ai-msg ai">好的！我为你制定 4 周减脂计划。核心思路：有氧 + HIIT 交替，每周 3 次 40 分钟，预计 4 周减脂 2-3kg。</div>
+            <div class="ai-plan">
+              <h5>本周训练计划</h5>
+              <div class="ai-plan-row"><span class="day">周一</span><span>跑步机 · HIIT 40min</span></div>
+              <div class="ai-plan-row"><span class="day">周三</span><span>划船机 · 耐力 45min</span></div>
+              <div class="ai-plan-row"><span class="day">周五</span><span>混合训练 · 35min</span></div>
+              <div class="ai-plan-row"><span class="day">周日</span><span>主动恢复 · 20min</span></div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- Events -->
+    <section id="events">
+      <div class="container">
+        <div class="section-head reveal">
+          <div class="section-label">赛事训练</div>
+          <h2 class="section-title">选择你的训练项目</h2>
+          <p class="section-sub">从单项有氧开始，或进入 HYROX、BTWE 专项训练。</p>
+        </div>
+        <div class="events-grid">
+          <div class="ev-card reveal">
+            <div class="ev-cover">
+              <img loading="lazy" alt="跑步机挑战赛" src="https://images.unsplash.com/photo-1552674605-db6ffd4facb5?w=720&auto=format&fit=crop&q=70" />
+            </div>
+            <div class="ev-body">
+              <h4>跑步机训练</h4>
+              <a href="/fitbest/#/train/treadmill" class="ev-cta">开始跑步机训练 →</a>
+            </div>
+          </div>
+          <div class="ev-card reveal">
+            <div class="ev-cover">
+              <img loading="lazy" alt="HYROX 赛事" src="https://images.unsplash.com/photo-1571019613454-1cb2f99b2d8b?w=720&auto=format&fit=crop&q=70" />
+            </div>
+            <div class="ev-body">
+              <h4>HYROX 专项</h4>
+              <a href="/hyrox/#/train" class="ev-cta">进入 HYROX 训练 →</a>
+            </div>
+          </div>
+          <div class="ev-card reveal">
+            <div class="ev-cover">
+              <img loading="lazy" alt="体能训练" src="https://images.unsplash.com/photo-1574680096145-d05b474e2155?w=720&auto=format&fit=crop&q=70" />
+            </div>
+            <div class="ev-body">
+              <h4>BTWE 专项</h4>
+              <a href="/btwe/#/train" class="ev-cta">进入 BTWE 训练 →</a>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- CTA -->
+    <section class="cta" id="download">
+      <div class="container reveal">
+        <h2>让训练从此不一样</h2>
+        <p>下载 FitBest 官方商店版，或直接打开网页版训练。</p>
+        <div class="cta-actions">
+          <a href="https://apps.apple.com/cn/app/fitbest/id6448613913" class="btn btn-lg btn-white">App Store</a>
+          <a href="https://play.google.com/store/apps/details?id=com.fitbest.www" class="btn btn-lg btn-white">Google Play</a>
+          <a href="/fitbest/" class="btn btn-lg btn-ghost-white">PWA 网页版</a>
+        </div>
+      </div>
+    </section>
+
+    <!-- Footer -->
+    <footer>
+      <div class="container">
+        <div class="ft-grid">
+          <div class="ft-brand">
+            <a href="#top" class="logo">
+              <img src="logo.png" alt="FITBEST" />
+              FITBEST
+            </a>
+            <p>让每一台智能器械，都懂你的训练。FTMS + 智能插销 + AI 私教 + 专项赛事，三端联动。</p>
+          </div>
+          <div class="ft-col"><h5>产品</h5><ul><li><a href="#download">手机 APP 下载</a></li><li><a href="/fitbest-hd/">HD 大屏版</a></li><li><a href="/fitbest/">PWA 网页版</a></li></ul></div>
+          <div class="ft-col"><h5>功能</h5><ul><li><a href="#ecosystem">器械生态</a></li><li><a href="#ai">AI 私教</a></li><li><a href="#events">赛事训练</a></li><li><a href="/fitbest/#/records">训练记录</a></li></ul></div>
+          <div class="ft-col"><h5>关于</h5><ul><li><a href="/fitbest/#/profile/about">关于 FITBEST</a></li><li><a href="mailto:myfitbest2023@gmail.com">联系支持</a></li></ul></div>
+        </div>
+        <div class="ft-bottom"><span>© 2026 FITBEST · thinkfit.cn</span><span>Made for every athlete</span></div>
+      </div>
+    </footer>
+
+    <script>
+      var nav = document.querySelector('nav');
+      window.addEventListener('scroll', function() {
+        nav.style.borderBottomColor = window.scrollY > 10 ? 'var(--border)' : 'transparent';
+      });
+      var hbg = document.getElementById('hbg'), links = document.getElementById('navLinks');
+      hbg.addEventListener('click', function() { links.classList.toggle('open'); });
+      links.querySelectorAll('a').forEach(function(a) { a.addEventListener('click', function() { links.classList.remove('open'); }); });
+      var obs = new IntersectionObserver(function(entries) {
+        entries.forEach(function(e) { if (e.isIntersecting) e.target.classList.add('v'); });
+      }, { threshold: 0.12 });
+      document.querySelectorAll('.reveal').forEach(function(el) { obs.observe(el); });
+    </script>
+  </body>
+</html>

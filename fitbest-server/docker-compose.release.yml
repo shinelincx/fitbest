@@ -1,0 +1,21 @@
+services:
+  web-bundle:
+    build:
+      context: ..
+      dockerfile: fitbest-server/Dockerfile.web
+      args:
+        NODE_IMAGE: ${FITBEST_WEB_NODE_IMAGE:-docker.m.daocloud.io/library/node:24-bookworm-slim}
+    volumes:
+      - web_dist:/published
+
+  fitbest-server:
+    environment:
+      FITBEST_WEB_ROOT: /opt/fitbest/web/current
+    volumes:
+      - web_dist:/opt/fitbest/web:ro
+    depends_on:
+      web-bundle:
+        condition: service_completed_successfully
+
+volumes:
+  web_dist:

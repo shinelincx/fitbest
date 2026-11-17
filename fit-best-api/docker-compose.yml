@@ -1,0 +1,57 @@
+services:
+  postgres:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: fitbest
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-fitbest}
+      POSTGRES_DB: fitbest
+    volumes:
+      - pg_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U fitbest -d fitbest"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  redis:
+    image: redis:7-alpine
+    restart: unless-stopped
+    command: ["redis-server", "--appendonly", "yes"]
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  api:
+    build: .
+    restart: unless-stopped
+    env_file:
+      - .env
+    environment:
+      DATABASE_URL: postgresql://fitbest:${POSTGRES_PASSWORD:-fitbest}@postgres:5432/fitbest?schema=public
+      REDIS_URL: redis://redis:6379
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    ports:
+      - "127.0.0.1:3000:3000"
+    networks:
+      default: {}
+      pcba:
+        aliases:
+          - fitbest-api
+
+volumes:
+  pg_data:
+  redis_data:
+
+networks:
+  pcba:
+    external: true
+    name: pcba-net

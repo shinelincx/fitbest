@@ -1,0 +1,22 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <title>FITBEST 管理后台</title>
+</head>
+<body>
+  <p>正在进入 <a href="/fit-best/saas/">FITBEST 管理后台</a>……</p>
+  <script>
+    // 注销旧版 Service Worker（旧 trainer 曾部署于 /fit-best/，其 SW 缓存会劫持导航导致跳转卡住）
+    if ('serviceWorker' in navigator) {
+      navigator.serviceWorker.getRegistrations().then(function (rs) {
+        return Promise.all(rs.map(function (r) { return r.unregister() }))
+      }).catch(function () {}).finally(function () {
+        location.replace('/fit-best/saas/')
+      })
+    } else {
+      location.replace('/fit-best/saas/')
+    }
+  </script>
+</body>
+</html>

@@ -1,0 +1,457 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum IdentityType {
+  phone
+  email
+  wechat
+}
+
+enum MachineType {
+  treadmill
+  rower
+  ski
+  bike
+  sled
+  rep
+}
+
+enum MachineStatus {
+  active
+  maintenance
+  retired
+}
+
+enum TagType {
+  qr
+  nfc
+}
+
+enum TagStatus {
+  active
+  revoked
+}
+
+enum SessionSource {
+  ble
+  sim
+  manual
+}
+
+enum AdminRole {
+  super
+  org_admin
+  gym_admin
+  ops
+  viewer
+}
+
+enum DeviceKind {
+  band
+  machine
+}
+
+enum WorkoutMode {
+  training
+  race
+}
+
+enum SegmentType {
+  start
+  finish
+  station
+  treadmill
+}
+
+enum DeviceSessionQuality {
+  ok
+  partial
+  invalid
+}
+
+model Org {
+  id            String         @id @default(uuid()) @db.Uuid
+  name          String
+  code          String         @unique
+  status        String         @default("active")
+  createdAt     DateTime       @default(now()) @map("created_at")
+  gyms          Gym[]
+  machineModels MachineModel[]
+  machines      Machine[]
+  adminUsers    AdminUser[]
+  eventLinks    EventLink[]
+
+  @@map("orgs")
+}
+
+model Gym {
+  id        String    @id @default(uuid()) @db.Uuid
+  orgId     String    @map("org_id") @db.Uuid
+  name      String
+  code      String
+  address   String?
+  timezone  String    @default("Asia/Shanghai")
+  status    String    @default("active")
+  createdAt DateTime  @default(now()) @map("created_at")
+  org       Org       @relation(fields: [orgId], references: [id])
+  machines  Machine[]
+  sessions  Session[]
+  admins    AdminUser[]
+
+  @@unique([orgId, code])
+  @@index([orgId])
+  @@map("gyms")
+}
+
+model User {
+  id          String          @id @default(uuid()) @db.Uuid
+  nickname    String
+  avatar      String?
+  gender      String?
+  birthYear   Int?            @map("birth_year")
+  heightCm    Decimal?        @map("height_cm") @db.Decimal(5, 1)
+  weightKg    Decimal?        @map("weight_kg") @db.Decimal(5, 1)
+  status      String          @default("active")
+  deletedAt   DateTime?       @map("deleted_at")
+  createdAt   DateTime        @default(now()) @map("created_at")
+  updatedAt   DateTime        @updatedAt @map("updated_at")
+  identities  UserIdentity[]
+  credential  UserCredential?
+  goal        UserGoal?
+  sessions    Session[]
+  authSessions UserSession[]
+  notifications Notification[]
+  eventRegistrations EventRegistration[]
+  trainingRecords TrainingRecord[]
+  deviceSessions  DeviceSession[]
+
+  @@map("users")
+}
+
+model UserIdentity {
+  id         String       @id @default(uuid()) @db.Uuid
+  userId     String       @map("user_id") @db.Uuid
+  type       IdentityType
+  identifier String
+  verifiedAt DateTime?    @map("verified_at")
+  createdAt  DateTime     @default(now()) @map("created_at")
+  user       User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([type, identifier])
+  @@index([userId])
+  @@map("user_identities")
+}
+
+model UserCredential {
+  userId       String   @id @map("user_id") @db.Uuid
+  passwordHash String   @map("password_hash")
+  updatedAt    DateTime @updatedAt @map("updated_at")
+  user         User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@map("user_credentials")
+}
+
+model UserGoal {
+  userId          String   @id @map("user_id") @db.Uuid
+  weeklySessions  Int      @default(0) @map("weekly_sessions")
+  weeklyMinutes   Int      @default(0) @map("weekly_minutes")
+  updatedAt       DateTime @updatedAt @map("updated_at")
+  user            User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@map("user_goals")
+}
+
+model UserSession {
+  id          String    @id @default(uuid()) @db.Uuid
+  userId      String    @map("user_id") @db.Uuid
+  refreshHash String    @map("refresh_hash")
+  device      String?
+  ip          String?
+  expiresAt   DateTime  @map("expires_at")
+  revokedAt   DateTime? @map("revoked_at")
+  createdAt   DateTime  @default(now()) @map("created_at")
+  user        User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@map("user_sessions")
+}
+
+model MachineModel {
+  id        String      @id @default(uuid()) @db.Uuid
+  orgId     String      @map("org_id") @db.Uuid
+  type      MachineType
+  model     String
+  brand     String?
+  specs     Json?
+  createdAt DateTime    @default(now()) @map("created_at")
+  org       Org         @relation(fields: [orgId], references: [id])
+  machines  Machine[]
+
+  @@unique([orgId, type, model])
+  @@map("machine_models")
+}
+
+model Machine {
+  id        String        @id @default(uuid()) @db.Uuid
+  modelId   String        @map("model_id") @db.Uuid
+  orgId     String        @map("org_id") @db.Uuid
+  gymId     String        @map("gym_id") @db.Uuid
+  serialNo  String        @unique @map("serial_no")
+  status    MachineStatus @default(active)
+  firmware  String?
+  createdAt DateTime      @default(now()) @map("created_at")
+  model     MachineModel  @relation(fields: [modelId], references: [id])
+  org       Org           @relation(fields: [orgId], references: [id])
+  gym       Gym           @relation(fields: [gymId], references: [id])
+  tags      MachineTag[]
+  sessions  Session[]
+
+  @@index([gymId])
+  @@map("machines")
+}
+
+model MachineTag {
+  id        String      @id @default(uuid()) @db.Uuid
+  machineId String      @map("machine_id") @db.Uuid
+  tagType   TagType     @map("tag_type")
+  tagValue  String      @unique @map("tag_value")
+  secret    String?
+  status    TagStatus   @default(active)
+  printedAt DateTime?   @map("printed_at")
+  createdAt DateTime    @default(now()) @map("created_at")
+  machine   Machine     @relation(fields: [machineId], references: [id], onDelete: Cascade)
+
+  @@map("machine_tags")
+}
+
+model Session {
+  id             String        @id @default(uuid()) @db.Uuid
+  userId         String        @map("user_id") @db.Uuid
+  gymId          String?       @map("gym_id") @db.Uuid
+  machineId      String?       @map("machine_id") @db.Uuid
+  machineType    MachineType   @map("machine_type")
+  machineModel   String?       @map("machine_model")
+  mode           String        @default("free")
+  durationSec    Int           @default(0) @map("duration_sec")
+  distanceM      Int           @default(0) @map("distance_m")
+  calories       Int           @default(0)
+  avgHr          Int?          @map("avg_hr")
+  avgSpeed       Decimal?      @map("avg_speed") @db.Decimal(4, 1)
+  cadence        Int?
+  power          Int?
+  source         SessionSource @default(ble)
+  startedAt      DateTime      @map("started_at")
+  endedAt        DateTime?     @map("ended_at")
+  createdAt      DateTime      @default(now()) @map("created_at")
+  idempotencyKey String?       @unique @map("idempotency_key")
+  user           User          @relation(fields: [userId], references: [id])
+  gym            Gym?          @relation(fields: [gymId], references: [id])
+  machine        Machine?      @relation(fields: [machineId], references: [id])
+  shareLink      ShareLink?
+
+  @@index([userId, startedAt(sort: Desc)])
+  @@index([machineId, startedAt(sort: Desc)])
+  @@index([gymId, startedAt(sort: Desc)])
+  @@map("sessions")
+}
+
+model ShareLink {
+  code          String    @id
+  sessionId     String?   @unique @map("session_id") @db.Uuid
+  weeklyPayload Json?     @map("weekly_payload")
+  ogTitle       String?   @map("og_title")
+  ogDesc        String?   @map("og_desc")
+  ogImageUrl    String?   @map("og_image_url")
+  views         Int       @default(0)
+  expiresAt     DateTime? @map("expires_at")
+  createdAt     DateTime  @default(now()) @map("created_at")
+  session       Session?  @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+
+  @@map("share_links")
+}
+
+model EventLink {
+  id          String    @id @default(uuid()) @db.Uuid
+  orgId       String?   @map("org_id") @db.Uuid
+  title       String
+  subtitle    String?
+  coverUrl    String?   @map("cover_url")
+  externalUrl String    @map("external_url")
+  startAt     DateTime? @map("start_at")
+  endAt       DateTime? @map("end_at")
+  sort        Int       @default(0)
+  status      String    @default("published")
+  createdAt   DateTime  @default(now()) @map("created_at")
+  org         Org?      @relation(fields: [orgId], references: [id])
+  registrations EventRegistration[]
+
+  @@map("event_links")
+}
+
+model EventRegistration {
+  id        String    @id @default(uuid()) @db.Uuid
+  userId    String    @map("user_id") @db.Uuid
+  eventId   String    @map("event_id") @db.Uuid
+  status    String    @default("registered")
+  createdAt DateTime  @default(now()) @map("created_at")
+  user      User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  event     EventLink @relation(fields: [eventId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, eventId])
+  @@index([eventId])
+  @@map("event_registrations")
+}
+
+model TrainingRecord {
+  id             String    @id @default(uuid()) @db.Uuid
+  userId         String    @map("user_id") @db.Uuid
+  app            String
+  clientKey      String?   @map("client_key")
+  planId         String?   @map("plan_id")
+  completed      Boolean   @default(false)
+  totalTimeSec   Int       @map("total_time_sec")
+  distanceM      Int       @default(0) @map("distance_m")
+  moduleTimes    Json?     @map("module_times")
+  runSplits      Json?     @map("run_splits")
+  avgHr          Int?      @map("avg_hr")
+  maxHr          Int?      @map("max_hr")
+  rpe            Int?
+  weakestStation String?   @map("weakest_station")
+  startedAt      DateTime? @map("started_at")
+  createdAt      DateTime  @default(now()) @map("created_at")
+  user           User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  deviceSessions DeviceSession[]
+
+  @@index([userId, app, createdAt(sort: Desc)])
+  @@unique([userId, app, clientKey])
+  @@map("training_records")
+}
+
+model Device {
+  id         String          @id @default(uuid()) @db.Uuid
+  serialNo   String          @unique @map("serial_no")
+  kind       DeviceKind      @default(band)
+  label      String?
+  lastSeenAt DateTime?       @map("last_seen_at")
+  createdAt  DateTime        @default(now()) @map("created_at")
+  sessions   DeviceSession[]
+
+  @@map("devices")
+}
+
+/// 手环同步的一整场数据：training=跑步机训练，race=赛道比赛（比赛数据不进教练 digest）
+model DeviceSession {
+  id               String              @id @default(uuid()) @db.Uuid
+  userId           String              @map("user_id") @db.Uuid
+  deviceId         String              @map("device_id") @db.Uuid
+  clientSessionId  String              @map("client_session_id")
+  mode             WorkoutMode
+  app              String              @default("hyrox")
+  startedAt        DateTime            @map("started_at")
+  endedAt          DateTime?           @map("ended_at")
+  durationSec      Int                 @default(0) @map("duration_sec")
+  distanceM        Int                 @default(0) @map("distance_m")
+  avgHr            Int?                @map("avg_hr")
+  maxHr            Int?                @map("max_hr")
+  metrics          Json?
+  closeReason      String?             @map("close_reason")
+  quality          DeviceSessionQuality @default(ok)
+  trainingRecordId String?             @map("training_record_id") @db.Uuid
+  createdAt        DateTime            @default(now()) @map("created_at")
+  user             User                @relation(fields: [userId], references: [id], onDelete: Cascade)
+  device           Device              @relation(fields: [deviceId], references: [id], onDelete: Cascade)
+  trainingRecord   TrainingRecord?     @relation(fields: [trainingRecordId], references: [id], onDelete: SetNull)
+  segments         DeviceSegment[]
+
+  @@unique([userId, clientSessionId])
+  @@index([userId, startedAt(sort: Desc)])
+  @@index([deviceId, startedAt(sort: Desc)])
+  @@map("device_sessions")
+}
+
+model DeviceSegment {
+  id             String        @id @default(uuid()) @db.Uuid
+  sessionId      String        @map("session_id") @db.Uuid
+  seq            Int
+  type           SegmentType
+  machineSerial  String?       @map("machine_serial")
+  machineType    String?       @map("machine_type")
+  connectTick    Int?          @map("connect_tick")
+  disconnectTick Int?          @map("disconnect_tick")
+  durationSec    Int           @default(0) @map("duration_sec")
+  distanceM      Int           @default(0) @map("distance_m")
+  metrics        Json?
+  createdAt      DateTime      @default(now()) @map("created_at")
+  session        DeviceSession @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+
+  @@unique([sessionId, seq])
+  @@map("device_segments")
+}
+
+model Notification {
+  id        String    @id @default(uuid()) @db.Uuid
+  userId    String    @map("user_id") @db.Uuid
+  type      String
+  title     String
+  body      String?
+  link      String?
+  readAt    DateTime? @map("read_at")
+  createdAt DateTime  @default(now()) @map("created_at")
+  user      User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, readAt])
+  @@map("notifications")
+}
+
+model AdminUser {
+  id           String    @id @default(uuid()) @db.Uuid
+  orgId        String    @map("org_id") @db.Uuid
+  gymId        String?   @map("gym_id") @db.Uuid
+  name         String
+  phone        String    @unique
+  passwordHash String    @map("password_hash")
+  role         AdminRole @default(viewer)
+  status       String    @default("active")
+  createdAt    DateTime  @default(now()) @map("created_at")
+  org          Org       @relation(fields: [orgId], references: [id])
+  gym          Gym?      @relation(fields: [gymId], references: [id])
+
+  @@map("admin_users")
+}
+
+model AuditLog {
+  id         String   @id @default(cuid())
+  adminId    String?  @map("admin_id") @db.Uuid
+  orgId      String?  @map("org_id") @db.Uuid
+  gymId      String?  @map("gym_id") @db.Uuid
+  action     String
+  targetType String?  @map("target_type")
+  targetId   String?  @map("target_id")
+  payload    Json?
+  ip         String?
+  createdAt  DateTime @default(now()) @map("created_at")
+
+  @@index([adminId, createdAt(sort: Desc)])
+  @@map("audit_logs")
+}
+
+model MessageLog {
+  id            String   @id @default(cuid())
+  channel       String
+  target        String
+  scene         String
+  template      String?
+  providerMsgId String?  @map("provider_msg_id")
+  status        String
+  error         String?
+  createdAt     DateTime @default(now()) @map("created_at")
+
+  @@index([target, createdAt(sort: Desc)])
+  @@map("message_logs")
+}

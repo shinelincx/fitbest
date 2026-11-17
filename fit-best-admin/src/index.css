@@ -1,0 +1,59 @@
+* {
+  box-sizing: border-box;
+}
+
+html,
+body,
+#root {
+  height: 100%;
+  margin: 0;
+  padding: 0;
+}
+
+body {
+  font-family: -apple-system, BlinkMacSystemFont, 'PingFang SC', 'Helvetica Neue', Arial, sans-serif;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  color: #1f1f1f;
+  background: #fafafb;
+}
+
+/* Ant Design 细节调优 */
+.ant-card {
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.04);
+}
+
+.ant-table {
+  --table-border-color: #f0f0f1;
+}
+
+.ant-table-thead > tr > th {
+  background: #fafafa !important;
+  font-weight: 500;
+  color: #595959;
+}
+
+.ant-table-row:hover > td {
+  background: #fafafa !important;
+}
+
+.ant-menu-dark .ant-menu-item {
+  margin: 2px 8px;
+  height: 38px;
+  line-height: 38px;
+  border-radius: 6px;
+}
+
+.ant-menu-dark .ant-menu-item-selected {
+  background: rgba(240, 24, 8, 0.16) !important;
+}
+
+.ant-menu-dark .ant-menu-item-selected > .ant-menu-title,
+.ant-menu-dark .ant-menu-item-selected > .ant-menu-icon {
+  color: #ff5b4d !important;
+}
+
+.ant-layout-sider-children {
+  display: flex;
+  flex-direction: column;
+}
