@@ -496,6 +496,30 @@ class TrainingSyncPostgresTest {
                 assertThat(adminExchange(adminToken, HttpMethod.GET, "/api/v1/admin/" + path, null)
                     .getStatusCode().is2xxSuccessful()).as(path).isTrue();
             }
+            var gym = adminExchange(adminToken, HttpMethod.POST, "/api/v1/admin/gyms",
+                "{\"name\":\"测试门店\",\"code\":\"gym-" + suffix + "\"}");
+            assertThat(gym.getStatusCode().is2xxSuccessful()).as("create gym").isTrue();
+            String gymId = (String) ((Map<?, ?>) gym.getBody()).get("id");
+            var model = adminExchange(adminToken, HttpMethod.POST, "/api/v1/admin/machine-models",
+                "{\"type\":\"rower\",\"model\":\"测试型号\"}");
+            assertThat(model.getStatusCode().is2xxSuccessful()).as("create model").isTrue();
+            String modelId = (String) ((Map<?, ?>) model.getBody()).get("id");
+            var machine = adminExchange(adminToken, HttpMethod.POST, "/api/v1/admin/machines",
+                "{\"gymId\":\"" + gymId + "\",\"modelId\":\"" + modelId + "\",\"serialNo\":\"test-" + suffix + "\"}");
+            assertThat(machine.getStatusCode().is2xxSuccessful()).as("create machine").isTrue();
+            String machineId = (String) ((Map<?, ?>) machine.getBody()).get("id");
+            var qr = adminExchange(adminToken, HttpMethod.POST, "/api/v1/admin/tags/generate?machineId=" + machineId, null);
+            assertThat(qr.getStatusCode().is2xxSuccessful()).as("generate QR").isTrue();
+            String qrValue = (String) ((Map<?, ?>) qr.getBody()).get("qrValue");
+            var nfc = adminExchange(adminToken, HttpMethod.POST, "/api/v1/admin/tags/nfc?machineId=" + machineId,
+                "{\"tagValue\":\"nfc-" + suffix + "\"}");
+            assertThat(nfc.getStatusCode().is2xxSuccessful()).as("bind NFC").isTrue();
+            for (var tag : Map.of("qr", qrValue, "nfc", "nfc-" + suffix).entrySet()) {
+                var resolved = http.postForEntity("/api/v1/scan/resolve",
+                    Map.of("kind", tag.getKey(), "value", tag.getValue()), Map.class);
+                assertThat(resolved.getStatusCode().is2xxSuccessful()).as("resolve " + tag.getKey()).isTrue();
+                assertThat(((Map<?, ?>) resolved.getBody().get("machine")).get("id")).isEqualTo(machineId);
+            }
             String body = """
                 {"title":"测试赛事","externalUrl":"https://example.test/event","status":"draft"}
                 """;
@@ -515,6 +539,9 @@ class TrainingSyncPostgresTest {
         } finally {
             jdbc.update("delete from audit_logs where org_id = ?", orgId);
             jdbc.update("delete from event_links where org_id = ?", orgId);
+            jdbc.update("delete from machines where org_id = ?", orgId);
+            jdbc.update("delete from machine_models where org_id = ?", orgId);
+            jdbc.update("delete from gyms where org_id = ?", orgId);
             jdbc.update("delete from admin_users where org_id = ?", orgId);
             jdbc.update("delete from orgs where id = ?", orgId);
         }

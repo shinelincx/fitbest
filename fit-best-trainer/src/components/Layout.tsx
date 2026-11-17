@@ -37,7 +37,7 @@ export default function Layout() {
     : 'relative z-10 mx-auto flex h-[100dvh] w-full max-w-[430px] flex-col bg-bg'
 
   // 底部栏高度预留
-  const bottomPad = IS_HD ? 'pb-[88px]' : hideNav ? 'pb-[calc(env(safe-area-inset-bottom)+12px)]' : 'pb-24'
+  const bottomPad = hideNav ? 'pb-[calc(env(safe-area-inset-bottom)+12px)]' : IS_HD ? 'pb-[calc(env(safe-area-inset-bottom)+88px)]' : 'pb-[calc(env(safe-area-inset-bottom)+96px)]'
 
   const mainPaddingCls = `flex-1 overflow-y-auto ${bottomPad}`
 
@@ -56,7 +56,7 @@ export default function Layout() {
 
       {/* HD 版：始终显示的居中底部图标栏 */}
       {IS_HD && !hideNav && (
-        <nav className="fixed bottom-0 left-0 right-0 z-50 border-t border-border bg-surface/95 backdrop-blur-xl">
+        <nav className="fixed bottom-0 left-0 right-0 z-50 border-t border-border bg-surface/95 pb-[env(safe-area-inset-bottom)] backdrop-blur-xl">
           <div className="mx-auto flex h-[72px] max-w-[1280px] items-center justify-center gap-1">
             {HD_BOTTOM_ITEMS.map((item) => {
               const Icon = item.icon

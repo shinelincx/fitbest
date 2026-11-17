@@ -66,6 +66,7 @@ jobs:
             npm --prefix "$app" ci --no-audit --no-fund
           done
           npm --prefix fit-best-trainer test
+          npm --prefix fit-best-trainer test -- --mode hd tests/pwa-layout.test.tsx
           node fitbest-server/deploy/build-web.mjs "$RUNNER_TEMP/fitbest-web"
       - name: Verify server and browser client integration
         working-directory: fitbest-server

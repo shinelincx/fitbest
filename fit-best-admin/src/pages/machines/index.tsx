@@ -8,6 +8,7 @@ import {
   Form,
   Input,
   Modal,
+  QRCode,
   Row,
   Select,
   Space,
@@ -71,9 +72,12 @@ export default function Machines() {
   const [modelOpen, setModelOpen] = useState(false)
   const [tagOpen, setTagOpen] = useState<{ machineId: string; machineName: string } | null>(null)
   const [qrValue, setQrValue] = useState('')
+  const [qrLoading, setQrLoading] = useState(false)
   const [nfcOpen, setNfcOpen] = useState<string | null>(null)
+  const [nfcBusy, setNfcBusy] = useState(false)
   const [createForm] = Form.useForm()
   const [modelForm] = Form.useForm()
+  const [nfcForm] = Form.useForm<{ tagValue: string }>()
 
   const refresh = async () => {
     setLoading(true)
@@ -122,11 +126,17 @@ export default function Machines() {
     refresh()
   }
 
-  const handleGenerateQr = async (machineId: string) => {
-    const res = await adminApi.generateQrTag(machineId)
-    setQrValue(res.qrValue)
-    message.success('二维码已生成')
-  }
+  useEffect(() => {
+    if (!tagOpen) return
+    let current = true
+    setQrValue('')
+    setQrLoading(true)
+    adminApi.generateQrTag(tagOpen.machineId)
+      .then((res) => { if (current) setQrValue(res.qrValue) })
+      .catch(() => { /* http 拦截器已提示 */ })
+      .finally(() => { if (current) setQrLoading(false) })
+    return () => { current = false }
+  }, [tagOpen])
 
   const columns: ColumnsType<MachineRow> = [
     {
@@ -173,13 +183,11 @@ export default function Machines() {
             icon={<QrcodeOutlined />}
             onClick={() => {
               setTagOpen({ machineId: r.id, machineName: r.name })
-              setQrValue('')
-              setTimeout(() => handleGenerateQr(r.id), 100)
             }}
           >
             二维码
           </Button>
-          <Button size="small" icon={<ScanOutlined />} onClick={() => setNfcOpen(r.id)}>
+          <Button size="small" icon={<ScanOutlined />} onClick={() => { nfcForm.resetFields(); setNfcOpen(r.id) }}>
             NFC
           </Button>
         </Space>
@@ -299,9 +307,14 @@ export default function Machines() {
         footer={null}
         width={420}
       >
+        {qrLoading && <Paragraph>正在生成二维码…</Paragraph>}
+        {!qrLoading && !qrValue && <Paragraph>生成失败，请关闭后重试。</Paragraph>}
         {qrValue && (
           <div style={{ textAlign: 'center', padding: '24px 0' }}>
-            <Paragraph>将下列字符串编码为二维码后贴于器械机身</Paragraph>
+            <Paragraph>扫描或打印此二维码，贴于器械机身</Paragraph>
+            <div style={{ display: 'flex', justifyContent: 'center', marginBottom: 16 }}>
+              <QRCode value={qrValue} size={200} />
+            </div>
             <div
               style={{
                 background: '#0f1115',
@@ -329,15 +342,30 @@ export default function Machines() {
         open={!!nfcOpen}
         onCancel={() => setNfcOpen(null)}
         onOk={async () => {
-          // 在实际流程中，NFC 值由读卡器返回
-          message.info('请先将 NFC 标签贴到读卡器，系统自动读取')
-          setNfcOpen(null)
+          if (!nfcOpen || nfcBusy) return
+          const values = await nfcForm.validateFields().catch(() => null)
+          if (!values) return
+          setNfcBusy(true)
+          try {
+            await adminApi.createNfcTag(nfcOpen, values.tagValue.trim())
+            message.success('NFC 标签已绑定')
+            setNfcOpen(null)
+            nfcForm.resetFields()
+          } catch {
+            // http 拦截器显示错误，保留输入以便重试
+          } finally {
+            setNfcBusy(false)
+          }
         }}
-        okText="完成"
+        confirmLoading={nfcBusy}
+        okText="绑定"
       >
-        <Paragraph>
-          请将 NFC 标签靠近读卡器，读取到标签值后点击完成，标签将与该器械绑定。
-        </Paragraph>
+        <Paragraph>请输入 NFC 读卡器读取的标签值。</Paragraph>
+        <Form form={nfcForm} layout="vertical" preserve={false}>
+          <Form.Item label="标签值" name="tagValue" rules={[{ required: true, whitespace: true, message: '请输入标签值' }, { max: 200, message: '标签值不能超过 200 个字符' }]}>
+            <Input maxLength={200} placeholder="输入标签值" />
+          </Form.Item>
+        </Form>
       </Modal>
     </div>
   )

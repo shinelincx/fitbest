@@ -11,6 +11,7 @@ export default defineConfig(({ mode }) => {
 
   return {
     base: './',
+    resolve: { dedupe: ['react', 'react-dom', 'react-router', 'react-router-dom', 'lucide-react'] },
     plugins: [
       react(),
       tailwindcss(),

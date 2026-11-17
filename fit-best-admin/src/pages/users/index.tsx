@@ -128,16 +128,16 @@ export default function Users() {
 
   return (
     <div>
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 20, gap: 12 }}>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', marginBottom: 20, gap: 12 }}>
         <Title level={4} style={{ margin: 0 }}>
           用户管理
         </Title>
-        <div style={{ display: 'flex', gap: 8 }}>
+        <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, minWidth: 0 }}>
           <Input
             allowClear
             prefix={<SearchOutlined style={{ color: '#bfbfbf' }} />}
             placeholder="搜索昵称 / 手机号 / 邮箱"
-            style={{ width: 300 }}
+            style={{ width: 300, maxWidth: '100%' }}
             value={keyword}
             onChange={(e) => setKeyword(e.target.value)}
             onPressEnter={() => fetchList(1, pageSize, keyword)}
@@ -151,6 +151,7 @@ export default function Users() {
 
       <Table<AdminUserRow>
         rowKey="id"
+        scroll={{ x: 760 }}
         columns={columns}
         dataSource={data}
         loading={loading}

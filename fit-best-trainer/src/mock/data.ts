@@ -112,13 +112,13 @@ export const EXTERNAL_APPS = [
     id: 'hyrox',
     name: 'HYROX',
     subtitle: '室内体能赛备赛 · 8 组模拟赛计时',
-    href: 'https://demo.thinkfit.cn/hyrox/',
+    href: '/hyrox/',
   },
   {
     id: 'btwe',
     name: 'BTWE',
     subtitle: '体能赛专项训练 · AI 教练定制计划',
-    href: 'https://demo.thinkfit.cn/btwe/',
+    href: '/btwe/',
   },
 ]
 

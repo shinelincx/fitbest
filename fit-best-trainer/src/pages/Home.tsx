@@ -291,7 +291,9 @@ export default function Home() {
               onClick={(event) => {
                 if (!isNative) return
                 event.preventDefault()
-                void openExternal(IS_HD ? `${app.href}HD/` : app.href).catch(() => {
+                const path = IS_HD ? `${app.href}HD/` : app.href
+                const url = new URL(path, import.meta.env.VITE_PUBLIC_WEB_URL || 'https://cloud.thinkfiter.com/').href
+                void openExternal(url).catch(() => {
                   toast(t('无法打开赛事页面'))
                 })
               }}

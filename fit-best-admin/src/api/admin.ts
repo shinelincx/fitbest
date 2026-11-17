@@ -221,9 +221,9 @@ export const adminApi = {
   createMachineModel: (data: { type: string; model: string; brand?: string; specs?: Record<string, unknown> }) =>
     http.post('/admin/machine-models', data),
   generateQrTag: (machineId: string) =>
-    http.post<{ machine: unknown; tag: unknown; qrValue: string }>('/admin/tags/generate', { machineId }),
+    http.post<{ machine: unknown; tag: unknown; qrValue: string }>('/admin/tags/generate', null, { params: { machineId } }),
   createNfcTag: (machineId: string, tagValue: string) =>
-    http.post('/admin/tags/nfc', { machineId, tagValue }),
+    http.post('/admin/tags/nfc', { tagValue }, { params: { machineId } }),
   eventLinks: () => http.get<AdminEventRow[]>('/admin/event-links'),
   createEventLink: (data: Record<string, unknown>) => http.post('/admin/event-links', data),
   updateEventLink: (id: string, data: Record<string, unknown>) => http.patch(`/admin/event-links/${id}`, data),

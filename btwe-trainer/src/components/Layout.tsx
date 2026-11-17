@@ -23,11 +23,9 @@ export default function Layout() {
     ? 'relative z-10 mx-auto flex h-[100dvh] w-full flex-col bg-bg'
     : 'relative z-10 mx-auto flex h-[100dvh] w-full max-w-[430px] flex-col bg-bg'
 
-  const mainPadding = IS_HD
-    ? 'pb-[88px]'
-    : isTraining
-      ? 'pb-[calc(env(safe-area-inset-bottom)+12px)]'
-      : 'pb-24'
+  const mainPadding = isTraining
+    ? 'pb-[calc(env(safe-area-inset-bottom)+12px)]'
+    : IS_HD ? 'pb-[calc(env(safe-area-inset-bottom)+88px)]' : 'pb-[calc(env(safe-area-inset-bottom)+96px)]'
 
   return (
     <div className={containerCls}>
@@ -43,7 +41,7 @@ export default function Layout() {
 
       {/* HD 版：居中底部图标栏（训练页隐藏） */}
       {IS_HD && !isTraining && (
-        <nav className="fixed bottom-0 left-0 right-0 z-50 border-t border-border bg-surface/95 backdrop-blur-xl">
+        <nav className="fixed bottom-0 left-0 right-0 z-50 border-t border-border bg-surface/95 pb-[env(safe-area-inset-bottom)] backdrop-blur-xl">
           <div className="mx-auto flex h-[72px] max-w-[1280px] items-center justify-center gap-1">
             {NAV_ITEMS.map((item) => {
               const Icon = item.icon
