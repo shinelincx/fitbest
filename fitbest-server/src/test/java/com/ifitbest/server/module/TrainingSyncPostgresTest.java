@@ -89,7 +89,7 @@ class TrainingSyncPostgresTest {
         Path client = Path.of("..", "fit-best-trainer").toAbsolutePath().normalize();
         ProcessBuilder test = new ProcessBuilder("node", "node_modules/vitest/vitest.mjs", "run",
             "tests/offline-machine-session.test.ts", "-t", "复网后");
-        test.directory(client.toFile()).inheritIO();
+        test.directory(client.toFile()).redirectOutput(ProcessBuilder.Redirect.INHERIT).redirectError(ProcessBuilder.Redirect.INHERIT);
         test.environment().put("FITBEST_SYNC_API_URL", "http://127.0.0.1:" + port + "/api/v1");
         test.environment().put("FITBEST_SYNC_ACCESS", token);
         test.environment().put("FITBEST_SYNC_CLIENT_ID", clientId);
@@ -113,7 +113,7 @@ class TrainingSyncPostgresTest {
         Path client = Path.of("..", "fit-best-trainer").toAbsolutePath().normalize();
         ProcessBuilder test = new ProcessBuilder("node", "node_modules/vitest/vitest.mjs", "run",
             "tests/race-training-sync.test.ts", "-t", app + ".*断网训练结束");
-        test.directory(client.toFile()).inheritIO();
+        test.directory(client.toFile()).redirectOutput(ProcessBuilder.Redirect.INHERIT).redirectError(ProcessBuilder.Redirect.INHERIT);
         test.environment().put("FITBEST_SYNC_API_URL", "http://127.0.0.1:" + port + "/api/v1");
         test.environment().put("FITBEST_SYNC_ACCESS", token);
         test.environment().put("FITBEST_RACE_SYNC_APP", app);
@@ -159,6 +159,7 @@ class TrainingSyncPostgresTest {
     private void runClient(ProcessBuilder test) throws Exception {
         Process child = test.start();
         try {
+            child.getOutputStream().close();
             assertThat(child.waitFor(45, TimeUnit.SECONDS)).isTrue();
             assertThat(child.exitValue()).isZero();
         } finally {
