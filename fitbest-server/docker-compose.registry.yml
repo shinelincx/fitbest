@@ -4,6 +4,6 @@ services:
   web-bundle:
     image: ${FITBEST_IMAGE_NAMESPACE:-ghcr.io/shinelincx/fitbest}-web:${FITBEST_RELEASE_TAG:?Set FITBEST_RELEASE_TAG}
   postgres:
-    image: ${FITBEST_POSTGRES_IMAGE:-postgres:16-alpine}
+    image: ${FITBEST_POSTGRES_IMAGE:-docker.m.daocloud.io/library/postgres:16-alpine}
   redis:
-    image: ${FITBEST_REDIS_IMAGE:-redis:7-alpine}
+    image: ${FITBEST_REDIS_IMAGE:-docker.m.daocloud.io/library/redis:7-alpine}

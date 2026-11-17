@@ -29,8 +29,8 @@ if [[ -L $path/.fitbest-current ]]; then
     exit 1
   fi
 fi
-"${compose[@]}" pull
-"${compose[@]}" up --no-build --wait --wait-timeout 180
+"${compose[@]}" pull fitbest-server web-bundle
+"${compose[@]}" up --no-build --pull never --wait --wait-timeout 180
 host_port=$("${compose[@]}" config --environment | sed -n 's/^HOST_PORT=//p')
 host_port=${host_port:-8080}
 [[ $host_port =~ ^[0-9]+$ ]]

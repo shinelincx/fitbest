@@ -35,13 +35,13 @@ class DeploymentTest(unittest.TestCase):
             bin_dir = path / "bin"
             bin_dir.mkdir()
             for name, content in {
-                "docker": "#!/bin/sh\nwhile [ $# -gt 0 ]; do if [ \"$1\" = --env-file ]; then envfile=$2; shift; fi; shift; done\n[ -z \"${envfile:-}\" ] || cat \"$envfile\"\necho HOST_PORT=9090\n",
+                "docker": "#!/bin/sh\necho \"$*\" >> \"$DOCKER_LOG\"\nwhile [ $# -gt 0 ]; do if [ \"$1\" = --env-file ]; then envfile=$2; shift; fi; shift; done\n[ -z \"${envfile:-}\" ] || cat \"$envfile\"\necho HOST_PORT=9090\n",
                 "curl": "#!/bin/sh\nexit ${FAIL_CURL:-0}\n",
             }.items():
                 executable = bin_dir / name
                 executable.write_text(content)
                 executable.chmod(0o755)
-            env = dict(os.environ, PATH=f"{bin_dir}:{os.environ['PATH']}")
+            env = dict(os.environ, PATH=f"{bin_dir}:{os.environ['PATH']}", DOCKER_LOG=str(path / "docker.log"))
             config = path / ".env"
             config.write_text("POSTGRES_PASSWORD=original\n")
             for run, fail in (("1", False), ("2", True)):
@@ -55,6 +55,9 @@ class DeploymentTest(unittest.TestCase):
                 self.assertEqual(result.returncode == 0, not fail, result.stderr)
                 self.assertEqual((path / ".fitbest-current").resolve(), path / ".fitbest-releases/1-1")
                 self.assertFalse(archive.exists())
+            docker_calls = (path / "docker.log").read_text()
+            self.assertIn("pull fitbest-server web-bundle", docker_calls)
+            self.assertIn("up --no-build --pull never", docker_calls)
             config.write_text("POSTGRES_PASSWORD=changed\n")
             archive = path / "upload-3.tar"
             with tarfile.open(archive, "w") as tar:

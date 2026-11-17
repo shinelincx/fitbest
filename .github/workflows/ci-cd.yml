@@ -111,6 +111,8 @@ jobs:
         working-directory: fitbest-server
         env:
           COMPOSE_FILE: docker-compose.yml:docker-compose.release.yml:docker-compose.registry.yml
+          FITBEST_POSTGRES_IMAGE: postgres:16-alpine
+          FITBEST_REDIS_IMAGE: redis:7-alpine
         run: |
           printf '%s\n' NODE_ENV=development HOST_PORT=18080 POSTGRES_PASSWORD=fitbest-ci > .env
           trap 'docker compose logs --tail=100' ERR
