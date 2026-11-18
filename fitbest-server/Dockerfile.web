@@ -5,9 +5,13 @@ COPY . .
 RUN set -eu; for app in fit-best-trainer hyrox-trainer btwe-trainer fit-best-admin; do \
       (cd "$app" && npm ci --no-audit --no-fund); \
     done
-RUN node fitbest-server/deploy/build-web.mjs /bundle
+RUN node fitbest-server/deploy/build-web.mjs /bundle \
+    && mv /bundle/console/media /console-media \
+    && find /console-media -exec touch -h -d @0 {} +
 
 FROM ${NODE_IMAGE}
+# Keep unchanged simulator media reusable across releases, independently of the Web bundle.
+COPY --link --from=build /console-media/ /bundle/console/media/
 COPY --from=build /bundle /bundle
 COPY fitbest-server/deploy/publish-web.sh /publish-web.sh
 ENTRYPOINT ["sh", "/publish-web.sh"]

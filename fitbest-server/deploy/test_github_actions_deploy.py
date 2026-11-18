@@ -117,9 +117,10 @@ class ImageRelayTest(unittest.TestCase):
             with self.assertRaisesRegex(RuntimeError, "Manifest digest mismatch"):
                 relay.Image("example/test-server", relay.sha256(index), ["linux", "amd64"])
 
-    def test_ranges_are_combined_and_corrupt_blobs_are_rejected(self):
+    def test_ranges_resume_after_one_failure_and_corrupt_blobs_are_rejected(self):
         body = bytes(range(256)) * 20_000
         requests = []
+        fail_segment = True
 
         class Source(BaseHTTPRequestHandler):
             def do_GET(self):
@@ -127,7 +128,7 @@ class ImageRelayTest(unittest.TestCase):
                 requests.append(requested)
                 first, last = map(int, requested.split("=")[1].split("-"))
                 content = body[first:last + 1]
-                self.send_response(206)
+                self.send_response(200 if fail_segment and first == 2097152 else 206)
                 self.send_header("Content-Range", "bytes {}-{}/{}".format(first, last, len(body)))
                 self.send_header("Content-Length", str(len(content)))
                 self.end_headers()
@@ -143,9 +144,15 @@ class ImageRelayTest(unittest.TestCase):
                 url = "http://127.0.0.1:{}/blob".format(server.server_port)
                 with tempfile.TemporaryDirectory() as tmp, ThreadPoolExecutor(max_workers=3) as pool:
                     target = Path(tmp) / "blob"
-                    relay.download_blob(url, relay.sha256(body), len(body), target, pool, ())
-                    self.assertEqual(target.read_bytes(), body)
+                    with self.assertRaisesRegex(RuntimeError, "Invalid HTTP range response"):
+                        relay.download_blob(url, relay.sha256(body), len(body), target, pool, ())
                     self.assertCountEqual(requests, ["bytes=0-2097151", "bytes=2097152-4194303", "bytes=4194304-5119999"])
+                    self.assertFalse(target.exists())
+                    requests.clear()
+                    fail_segment = False
+                    relay.download_blob(url, relay.sha256(body), len(body), target, pool, ())
+                    self.assertEqual(requests, ["bytes=2097152-4194303"])
+                    self.assertEqual(target.read_bytes(), body)
                     corrupt = Path(tmp) / "bad"
                     with self.assertRaisesRegex(RuntimeError, "Blob digest or length mismatch"):
                         relay.download_blob(url, relay.sha256(b"bad"), len(body), corrupt, pool, ())

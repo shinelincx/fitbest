@@ -53,21 +53,29 @@ def download_blob(url, digest, size, target, workers, headers):
     def fetch_range(offset):
         length = min(CHUNK_SIZE, size - offset)
         part = target.with_suffix(".part-{}".format(offset))
-        code = curl(url, ("--range", "{}-{}".format(offset, offset + length - 1),
-                          "--output", str(part), "--write-out", "%{http_code}"), headers)
-        if code != b"206" or part.stat().st_size != length:
-            raise RuntimeError("Invalid HTTP range response for " + digest)
+        if part.is_file():
+            return part
+        incoming = part.with_name(part.name + ".download")
+        try:
+            code = curl(url, ("--range", "{}-{}".format(offset, offset + length - 1),
+                              "--output", str(incoming), "--write-out", "%{http_code}"), headers)
+            if code != b"206" or incoming.stat().st_size != length:
+                raise RuntimeError("Invalid HTTP range response for " + digest)
+            os.replace(str(incoming), str(part))
+        finally:
+            if incoming.exists():
+                incoming.unlink()
         return part
 
+    parts = []
     if size > CHUNK_SIZE:
-        parts = [workers.submit(fetch_range, offset) for offset in range(0, size, CHUNK_SIZE)]
-        wait(parts)
+        downloads = [workers.submit(fetch_range, offset) for offset in range(0, size, CHUNK_SIZE)]
+        wait(downloads)
+        parts = [result.result() for result in downloads]
         with partial.open("wb") as output:
-            for result in parts:
-                part = result.result()
+            for part in parts:
                 with part.open("rb") as source:
                     shutil.copyfileobj(source, output)
-                part.unlink()
     else:
         curl(url, ("--output", str(partial)), headers)
 
@@ -75,6 +83,8 @@ def download_blob(url, digest, size, target, workers, headers):
     with partial.open("rb") as source:
         for block in iter(lambda: source.read(CHUNK_SIZE), b""):
             checksum.update(block)
+    for part in parts:
+        part.unlink()
     if checksum.hexdigest() != digest[7:] or partial.stat().st_size != size:
         raise RuntimeError("Blob digest or length mismatch for " + digest)
     os.replace(str(partial), str(target))
@@ -194,7 +204,8 @@ def pull(namespace, tag, server_digest, web_digest):
 
             def import_image(name):
                 reference = references[name]
-                subprocess.run(["docker", "pull", reference], check=True, timeout=600)
+                # Leave time for Compose health checks within the 20-minute deploy job.
+                subprocess.run(["docker", "pull", reference], check=True, timeout=840)
                 revision = subprocess.check_output(
                     ["docker", "image", "inspect", "--format",
                      '{{index .Config.Labels "org.opencontainers.image.revision"}}', reference],

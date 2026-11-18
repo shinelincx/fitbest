@@ -129,6 +129,8 @@ jobs:
           for path in actuator/health fitbest/ fitbest-hd/ fit-best/ hyrox/ hyrox/HD/ btwe/ btwe/HD/ fitbestwebsite/ console/; do
             curl --fail --silent --show-error "http://127.0.0.1:18080/$path" > /dev/null
           done
+          [[ $(curl --fail --silent --show-error --range 0-15 --output /dev/null --write-out '%{http_code}' \
+            http://127.0.0.1:18080/console/media/rowing-pov.mp4) == 206 ]]
       - name: Push images to GHCR
         id: push
         env:
