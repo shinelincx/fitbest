@@ -3,16 +3,19 @@ import { useTranslation } from 'react-i18next'
 import { Link, Navigate } from 'react-router-dom'
 import { Mail, MessageCircle, Smartphone } from 'lucide-react'
 import PageHeader from '../../components/PageHeader'
+import ContactVerification from '../../components/ContactVerification'
 import { useToast } from '../../components/Toast'
 import { useAuth } from '../../context/AuthContext'
 import {
   EMAIL_RE,
   PHONE_RE,
+  isCloudAccount,
   maskEmail,
   maskPhone,
   sendEmailCode,
   sendSmsCode,
   type IdentityKind,
+  type Verification,
 } from '../../utils/auth'
 
 const inputCls =
@@ -40,12 +43,18 @@ export default function Identities() {
   const [left, setLeft] = useCountdown()
   const [confirm, setConfirm] = useState<IdentityKind | null>(null)
   const [error, setError] = useState('')
+  const [verification, setVerification] = useState<Verification>()
+  const [saving, setSaving] = useState(false)
+  const [sending, setSending] = useState(false)
 
   if (!user) return <Navigate to="/login" replace />
 
   const boundCount = [user.phone, user.email, user.wechatOpenid].filter(Boolean).length
+  const cloud = isCloudAccount()
 
   async function sendCode() {
+    if (sending) return
+    setSending(true)
     try {
       if (binding === 'email') {
         const c = await sendEmailCode(email, 'bind')
@@ -58,18 +67,23 @@ export default function Identities() {
       setError('')
     } catch (err) {
       setError(err instanceof Error ? err.message : t('发送失败，请重试'))
+    } finally {
+      setSending(false)
     }
   }
 
   async function submitBind() {
+    if (saving) return
+    setSaving(true)
     try {
+      if (cloud && verification?.code.length !== 6) throw new Error(t('请先验证已有登录方式'))
       if (binding === 'email') {
         if (!EMAIL_RE.test(email.trim())) throw new Error(t('请输入正确的邮箱地址'))
-        await bindEmail(email, code)
+        await bindEmail(email, code, verification)
         toast(t('邮箱已绑定'))
       } else {
         if (!PHONE_RE.test(phone.trim())) throw new Error(t('请输入正确的 11 位手机号'))
-        await bindPhone(phone, code)
+        await bindPhone(phone, code, verification)
         toast(t('手机号已绑定'))
       }
       setBinding(null)
@@ -78,8 +92,11 @@ export default function Identities() {
       setCode('')
       setLeft(0)
       setError('')
+      setVerification(undefined)
     } catch (err) {
       setError(err instanceof Error ? err.message : t('绑定失败，请重试'))
+    } finally {
+      setSaving(false)
     }
   }
 
@@ -93,13 +110,23 @@ export default function Identities() {
   }
 
   async function handleUnbind(kind: IdentityKind) {
+    if (saving) return
+    setSaving(true)
     try {
-      if (kind === 'email') await unbindEmail()
+      if (kind === 'email') {
+        if (boundCount <= 1) throw new Error(t('至少保留一种登录方式'))
+        if (cloud && verification?.code.length !== 6) throw new Error(t('请先验证已有登录方式'))
+        await unbindEmail(verification)
+      }
       else await unbindWechat()
       toast(t('已解绑'))
       setConfirm(null)
+      setVerification(undefined)
     } catch (err) {
-      toast(err instanceof Error ? t(err.message) : t('解绑失败，请重试'))
+      if (kind === 'email' && cloud) setError(err instanceof Error ? err.message : t('解绑失败，请重试'))
+      else toast(err instanceof Error ? t(err.message) : t('解绑失败，请重试'))
+    } finally {
+      setSaving(false)
     }
   }
 
@@ -111,6 +138,8 @@ export default function Identities() {
         <button
           onClick={() => {
             setBinding('phone')
+            setConfirm(null)
+            setVerification(undefined)
             setCode('')
             setError('')
           }}
@@ -121,6 +150,7 @@ export default function Identities() {
       )
     }
     if (confirm === kind) {
+      if (kind === 'email' && cloud) return null
       return (
         <div className="flex shrink-0 gap-2">
           <button onClick={() => setConfirm(null)} className="rounded-full border border-border px-2.5 py-1 text-[13px]">
@@ -150,13 +180,15 @@ export default function Identities() {
       )
     }
     return bound ? (
-      <button onClick={() => setConfirm(kind)} className="shrink-0 text-[13px] text-text-sub">
+      <button onClick={() => { setConfirm(kind); setBinding(null); setVerification(undefined); setError('') }} className="shrink-0 text-[13px] text-text-sub">
         {t('解绑')}
       </button>
     ) : (
       <button
         onClick={() => {
           setBinding(kind === 'email' ? 'email' : 'phone')
+          setConfirm(null)
+          setVerification(undefined)
           setCode('')
           setError('')
         }}
@@ -243,7 +275,7 @@ export default function Identities() {
               />
               <button
                 type="button"
-                disabled={left > 0}
+                disabled={left > 0 || sending}
                 onClick={sendCode}
                 className={`mt-1.5 shrink-0 rounded-md border border-border px-3 text-[14px] font-medium disabled:opacity-50 ${
                   left > 0 ? 'text-text-sub' : 'bg-surface-2 text-text'
@@ -253,20 +285,38 @@ export default function Identities() {
               </button>
             </div>
           </label>
-          {error && <p className="mt-2 text-[13px] text-danger">{t(error)}</p>}
+          {cloud && <ContactVerification user={user} value={verification} onChange={setVerification} disabled={saving} />}
+          {error && <p role="alert" className="mt-2 text-[13px] text-danger">{t(error)}</p>}
           <div className="mt-3 flex gap-2">
             <button
               onClick={() => {
                 setBinding(null)
                 setError('')
+                setVerification(undefined)
               }}
+              disabled={saving}
               className="flex-1 rounded-md border border-border py-2.5 text-sm"
             >
               {t('取消')}
             </button>
-            <button onClick={submitBind} className="flex-1 rounded-md bg-text py-2.5 text-sm font-semibold text-bg">
+            <button onClick={submitBind} disabled={saving} className="flex-1 rounded-md bg-text py-2.5 text-sm font-semibold text-bg disabled:opacity-60">
               {t('确认绑定')}
             </button>
+          </div>
+        </section>
+      )}
+
+      {cloud && confirm === 'email' && (
+        <section className="mb-5 rounded-md border border-border bg-surface p-4">
+          <p className="text-sm font-semibold">{t('解绑邮箱')}</p>
+          {boundCount > 1
+            ? <ContactVerification user={user} value={verification} onChange={setVerification} disabled={saving} />
+            : <p className="mt-2 text-sm text-text-sub">{t('至少保留一种登录方式')}</p>}
+          {error && <p role="alert" className="mt-2 text-[13px] text-danger">{t(error)}</p>}
+          <div className="mt-3 flex gap-2">
+            <button type="button" disabled={saving} onClick={() => setConfirm(null)} className="flex-1 rounded-md border border-border py-2.5 text-sm">{t('取消')}</button>
+            <button type="button" disabled={saving || boundCount <= 1} onClick={() => handleUnbind('email')}
+              className="flex-1 rounded-md bg-danger py-2.5 text-sm font-semibold text-bg disabled:opacity-60">{t('确认解绑')}</button>
           </div>
         </section>
       )}

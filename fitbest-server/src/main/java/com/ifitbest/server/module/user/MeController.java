@@ -18,7 +18,8 @@ import org.springframework.web.bind.annotation.RestController;
 
 import com.ifitbest.server.common.auth.Authed;
 import com.ifitbest.server.common.auth.CurrentUser;
-import com.ifitbest.server.common.error.BizException;
+import com.ifitbest.server.infra.persistence.IdentityType;
+import com.ifitbest.server.module.user.UsersService.Verification;
 
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.DecimalMax;
@@ -60,21 +61,37 @@ public class MeController {
     }
 
     public record BindPhoneBody(
-        @Pattern(regexp = "^1[3-9]\\d{9}$", message = "手机号格式不正确") String phone,
-        @Pattern(regexp = "^\\d{6}$", message = "验证码应为 6 位数字") String code) {
+        @NotBlank @Pattern(regexp = "^1[3-9]\\d{9}$", message = "手机号格式不正确") String phone,
+        @NotBlank @Pattern(regexp = "^\\d{6}$", message = "验证码应为 6 位数字") String code,
+        @Valid Verification verification) {
     }
 
     public record BindEmailBody(
-        @Email(message = "邮箱格式不正确") String email,
-        @Pattern(regexp = "^\\d{6}$", message = "验证码应为 6 位数字") String code) {
+        @NotBlank @Email(message = "邮箱格式不正确") String email,
+        @NotBlank @Pattern(regexp = "^\\d{6}$", message = "验证码应为 6 位数字") String code,
+        @Valid Verification verification) {
     }
 
     public record BindWechatBody(@NotBlank String code, String client) {
     }
 
     public record PasswordBody(
-        @Size(min = 6, max = 32, message = "密码至少 6 位") String password,
-        @Size(min = 6, max = 32) String oldPassword) {
+        @NotBlank @Size(min = 6, max = 32, message = "密码长度为 6 至 32 位") String password,
+        @Size(min = 6, max = 32) String oldPassword,
+        @Valid Verification verification) {
+    }
+
+    public record DeleteBody(
+        @Size(min = 6, max = 32, message = "密码长度为 6 至 32 位") String password,
+        @Valid Verification verification) {
+    }
+
+    public record SecurityCodeBody(@NotNull IdentityType channel) {
+    }
+
+    @PostMapping("security/code")
+    public Map<String, Object> sendSecurityCode(@CurrentUser UUID userId, @Valid @RequestBody SecurityCodeBody body) {
+        return users.sendSecurityCode(userId, body.channel());
     }
 
     // ---------- 端点 ----------
@@ -102,12 +119,12 @@ public class MeController {
 
     @PostMapping("identities/phone")
     public Map<String, Object> bindPhone(@CurrentUser UUID userId, @Valid @RequestBody BindPhoneBody body) {
-        return users.bindPhone(userId, body.phone(), body.code());
+        return users.bindPhone(userId, body.phone(), body.code(), body.verification());
     }
 
     @PostMapping("identities/email")
     public Map<String, Object> bindEmail(@CurrentUser UUID userId, @Valid @RequestBody BindEmailBody body) {
-        return users.bindEmail(userId, body.email(), body.code());
+        return users.bindEmail(userId, body.email(), body.code(), body.verification());
     }
 
     @PostMapping("identities/wechat")
@@ -116,22 +133,20 @@ public class MeController {
     }
 
     @DeleteMapping("identities/{type}")
-    public Map<String, Object> unbind(@CurrentUser UUID userId, @PathVariable String type) {
-        return users.unbind(userId, type);
+    public Map<String, Object> unbind(@CurrentUser UUID userId, @PathVariable String type,
+                                     @Valid @RequestBody(required = false) Verification verification) {
+        return users.unbind(userId, type, verification);
     }
 
     @PutMapping("password")
     public Map<String, Object> setPassword(@CurrentUser UUID userId, @Valid @RequestBody PasswordBody body) {
-        return users.setPassword(userId, body.password(), body.oldPassword());
+        return users.setPassword(userId, body.password(), body.oldPassword(), body.verification());
     }
 
     @DeleteMapping
     public Map<String, Object> deleteAccount(@CurrentUser UUID userId,
-                                             @RequestBody(required = false) PasswordBody body) {
-        String password = body == null ? null : body.password();
-        if (password != null && (password.length() < 6 || password.length() > 32)) {
-            throw BizException.badRequest("密码至少 6 位");
-        }
-        return users.deleteAccount(userId, password);
+                                             @Valid @RequestBody(required = false) DeleteBody body) {
+        return users.deleteAccount(userId, body == null ? null : body.password(),
+            body == null ? null : body.verification());
     }
 }

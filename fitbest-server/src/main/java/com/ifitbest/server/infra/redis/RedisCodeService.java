@@ -1,9 +1,12 @@
 package com.ifitbest.server.infra.redis;
 
 import java.time.Duration;
+import java.util.ArrayList;
+import java.util.List;
 import java.util.concurrent.ThreadLocalRandom;
 
 import org.springframework.data.redis.core.StringRedisTemplate;
+import org.springframework.data.redis.core.script.DefaultRedisScript;
 import org.springframework.stereotype.Service;
 
 import com.ifitbest.server.common.error.BizException;
@@ -21,6 +24,24 @@ import com.ifitbest.server.config.FitbestProperties;
 public class RedisCodeService {
 
     private static final int MAX_ATTEMPTS = 5;
+    private static final DefaultRedisScript<Long> VERIFY = new DefaultRedisScript<>("""
+        for i, key in ipairs(KEYS) do
+            local raw = redis.call('GET', key)
+            if not raw then return 1 end
+            local state = cjson.decode(raw)
+            if state.a >= tonumber(ARGV[1]) then
+                redis.call('DEL', key)
+                return 2
+            end
+            if state.h ~= ARGV[i + 1] then
+                state.a = state.a + 1
+                redis.call('SET', key, cjson.encode(state), 'KEEPTTL')
+                return 3
+            end
+        end
+        for _, key in ipairs(KEYS) do redis.call('DEL', key) end
+        return 0
+        """, Long.class);
 
     private final StringRedisTemplate redis;
     private final FitbestProperties props;
@@ -32,7 +53,8 @@ public class RedisCodeService {
 
     public enum Channel { sms, email }
 
-    public enum Scene { login, bind }
+    public enum Scene { login, bind, security }
+    public record Proof(Channel channel, Scene scene, String target, String code) {}
 
     public String issue(Channel channel, Scene scene, String target) {
         String cooldownKey = "cool:" + channel + ":" + scene + ":" + target;
@@ -60,25 +82,22 @@ public class RedisCodeService {
     }
 
     public void verify(Channel channel, Scene scene, String target, String code) {
-        String key = codeKey(channel, scene, target);
-        String raw = redis.opsForValue().get(key);
-        if (raw == null) {
-            throw BizException.badRequest("验证码已失效，请重新获取");
-        }
-        int attempts = raw.contains("\"a\":") ? Integer.parseInt(raw.replaceAll(".*\"a\":(\\d+).*", "$1")) : 0;
-        String h = raw.replaceAll(".*\"h\":\"([0-9a-f]+)\".*", "$1");
+        verifyTogether(new Proof(channel, scene, target, code));
+    }
 
-        if (attempts >= MAX_ATTEMPTS) {
-            redis.delete(key);
-            throw BizException.badRequest("验证码错误次数过多，请重新获取");
+    public void verifyTogether(Proof... proofs) {
+        List<String> keys = new ArrayList<>(proofs.length);
+        List<String> args = new ArrayList<>(proofs.length + 1);
+        args.add(Integer.toString(MAX_ATTEMPTS));
+        for (Proof proof : proofs) {
+            keys.add(codeKey(proof.channel(), proof.scene(), proof.target()));
+            args.add(hash(proof.channel(), proof.scene(), proof.target(), proof.code()));
         }
-        if (!h.equals(hash(channel, scene, target, code))) {
-            Long ttl = redis.getExpire(key);
-            redis.opsForValue().set(key, "{\"h\":\"" + h + "\",\"a\":" + (attempts + 1) + "}",
-                Duration.ofSeconds(ttl == null || ttl < 0 ? props.getAuth().getCodeTtl() : ttl));
-            throw BizException.badRequest("验证码错误");
-        }
-        redis.delete(key);
+        Long result = redis.execute(VERIFY, keys, args.toArray());
+        if (Long.valueOf(0).equals(result)) return;
+        if (Long.valueOf(2).equals(result)) throw BizException.badRequest("验证码错误次数过多，请重新获取");
+        if (Long.valueOf(3).equals(result)) throw BizException.badRequest("验证码错误");
+        throw BizException.badRequest("验证码已失效，请重新获取");
     }
 
     private String codeKey(Channel channel, Scene scene, String target) {

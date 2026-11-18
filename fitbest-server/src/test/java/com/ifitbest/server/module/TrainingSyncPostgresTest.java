@@ -35,6 +35,7 @@ import org.springframework.test.context.DynamicPropertySource;
 import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
 
 import com.ifitbest.server.common.auth.JwtCodec;
+import com.ifitbest.server.infra.redis.RedisCodeService;
 import com.ifitbest.server.module.admin.AdminService;
 
 /**
@@ -57,6 +58,7 @@ class TrainingSyncPostgresTest {
     }
 
     @Autowired private JdbcTemplate jdbc;
+    @Autowired private RedisCodeService codes;
     @Autowired private JwtCodec tokens;
     @Autowired private TestRestTemplate http;
     @Autowired private AdminService admin;
@@ -87,8 +89,40 @@ class TrainingSyncPostgresTest {
     @Test
     void accountDeletionInvalidatesPreviouslyIssuedAccessTokensForTrainingData() {
         assertThat(exchange("/api/v1/sessions?range=all", HttpMethod.GET, null).getStatusCode().value()).isEqualTo(200);
-        assertThat(exchange("/api/v1/me", HttpMethod.DELETE, null).getStatusCode().value()).isEqualTo(200);
+        assertThat(exchange("/api/v1/me", HttpMethod.DELETE, null).getStatusCode().value()).isEqualTo(400);
+        String email = seedVerifiedEmail();
+        String code = codes.issue(RedisCodeService.Channel.email, RedisCodeService.Scene.security, email);
+        String proof = "{\"verification\":{\"channel\":\"email\",\"code\":\"" + code + "\"}}";
+        assertThat(exchange("/api/v1/me", HttpMethod.DELETE, proof).getStatusCode().value()).isEqualTo(200);
         assertThat(exchange("/api/v1/sessions?range=all", HttpMethod.GET, null).getStatusCode().value()).isEqualTo(401);
+        assertThat(jdbc.queryForObject("select status from users where id = ?", String.class, userId)).isEqualTo("deleted");
+    }
+
+    @Test
+    void bindingNeedsBothCodesAndARejectedCodeDoesNotConsumeTheOther() {
+        String email = seedVerifiedEmail();
+        String phone = "139" + String.format("%08d", Math.floorMod(userId.hashCode(), 100_000_000));
+        String security = codes.issue(RedisCodeService.Channel.email, RedisCodeService.Scene.security, email);
+        String code = codes.issue(RedisCodeService.Channel.sms, RedisCodeService.Scene.bind, phone);
+        String body = """
+            {"phone":"%s","code":"%s","verification":{"channel":"email","code":"%s"}}
+            """;
+        String wrong = code.equals("000000") ? "111111" : "000000";
+        assertThat(exchange("/api/v1/me/identities/phone", HttpMethod.POST,
+            body.formatted(phone, wrong, security)).getStatusCode().value()).isEqualTo(400);
+        assertThat(exchange("/api/v1/me/identities/phone", HttpMethod.POST,
+            body.formatted(phone, code, security)).getStatusCode().value()).isEqualTo(200);
+        assertThat(exchange("/api/v1/me/identities/email", HttpMethod.DELETE,
+            "{\"channel\":\"email\",\"code\":\"" + security + "\"}").getStatusCode().value()).isEqualTo(400);
+    }
+
+    private String seedVerifiedEmail() {
+        String email = userId + "@example.invalid";
+        jdbc.update("""
+            insert into user_identities (id, user_id, type, identifier, verified_at)
+            values (?, ?, 'email', ?, now())
+            """, UUID.randomUUID(), userId, email);
+        return email;
     }
 
     @Test

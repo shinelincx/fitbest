@@ -2,10 +2,11 @@ import { useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { Link, Navigate, useNavigate } from 'react-router-dom'
 import { LogOut, Shield, Trash2 } from 'lucide-react'
+import ContactVerification from '../../components/ContactVerification'
 import PageHeader from '../../components/PageHeader'
 import { useToast } from '../../components/Toast'
 import { useAuth } from '../../context/AuthContext'
-import { maskContact, maskPhone } from '../../utils/auth'
+import { isCloudAccount, maskContact, maskPhone, type Verification } from '../../utils/auth'
 
 const inputCls =
   'mt-1.5 w-full rounded-md border border-border bg-surface px-4 py-3 text-sm outline-none focus:border-text'
@@ -21,19 +22,25 @@ export default function Security() {
   const [confirmPw, setConfirmPw] = useState('')
   const [pwError, setPwError] = useState('')
   const [pwSaving, setPwSaving] = useState(false)
+  const [passwordVerification, setPasswordVerification] = useState<Verification>()
 
   const [confirmLogout, setConfirmLogout] = useState(false)
   const [deleteOpen, setDeleteOpen] = useState(false)
   const [deletePw, setDeletePw] = useState('')
   const [deleteError, setDeleteError] = useState('')
   const [deleteSaving, setDeleteSaving] = useState(false)
+  const [deleteVerification, setDeleteVerification] = useState<Verification>()
 
   if (!user) return <Navigate to={deleteSaving ? '/' : '/login'} replace />
+  const cloud = isCloudAccount()
 
   async function handleChangePassword() {
     if (pwSaving) return
     if (newPw.length < 6) return setPwError(t('新密码至少 6 位'))
     if (newPw !== confirmPw) return setPwError(t('两次输入的新密码不一致'))
+    if (cloud && !user?.passwordHash && passwordVerification?.code.length !== 6) {
+      return setPwError(t('请先验证已有登录方式'))
+    }
     setPwSaving(true)
     setPwError('')
     try {
@@ -41,12 +48,13 @@ export default function Security() {
         await changePassword(oldPw, newPw)
         toast(t('密码已更新'))
       } else {
-        await setPassword(newPw)
+        await setPassword(newPw, passwordVerification)
         toast(t('密码已设置'))
       }
       setOldPw('')
       setNewPw('')
       setConfirmPw('')
+      setPasswordVerification(undefined)
     } catch (err) {
       setPwError(err instanceof Error ? err.message : t('修改失败，请重试'))
     } finally {
@@ -57,10 +65,13 @@ export default function Security() {
   async function handleDelete() {
     if (deleteSaving) return
     if (user?.passwordHash && !deletePw) return setDeleteError(t('请输入密码确认身份'))
+    if (cloud && !user?.passwordHash && deleteVerification?.code.length !== 6) {
+      return setDeleteError(t('请先验证已有登录方式'))
+    }
     setDeleteError('')
     setDeleteSaving(true)
     try {
-      await deleteAccount(deletePw || undefined)
+      await deleteAccount(deletePw || undefined, deleteVerification)
     } catch (err) {
       setDeleteSaving(false)
       return setDeleteError(err instanceof Error ? err.message : t('注销失败，请重试'))
@@ -100,18 +111,21 @@ export default function Security() {
             {user.passwordHash && (
               <label className="block">
                 <span className="text-[13px] text-text-sub">{t('原密码')}</span>
-                <input type="password" value={oldPw} onChange={(e) => setOldPw(e.target.value)} className={inputCls} />
+                <input type="password" autoComplete="current-password" value={oldPw} onChange={(e) => setOldPw(e.target.value)} className={inputCls} />
               </label>
             )}
             <label className="block">
               <span className="text-[13px] text-text-sub">{t('新密码')}</span>
-              <input type="password" value={newPw} onChange={(e) => setNewPw(e.target.value)} className={inputCls} />
+              <input type="password" autoComplete="new-password" maxLength={32} value={newPw} onChange={(e) => setNewPw(e.target.value)} className={inputCls} />
             </label>
             <label className="block">
               <span className="text-[13px] text-text-sub">{t('确认新密码')}</span>
-              <input type="password" value={confirmPw} onChange={(e) => setConfirmPw(e.target.value)} className={inputCls} />
+              <input type="password" autoComplete="new-password" maxLength={32} value={confirmPw} onChange={(e) => setConfirmPw(e.target.value)} className={inputCls} />
             </label>
-            {pwError && <p className="text-[13px] text-danger">{t(pwError)}</p>}
+            {cloud && !user.passwordHash && (
+              <ContactVerification user={user} value={passwordVerification} onChange={setPasswordVerification} disabled={pwSaving} />
+            )}
+            {pwError && <p role="alert" className="text-[13px] text-danger">{t(pwError)}</p>}
             <button
               onClick={handleChangePassword}
               disabled={pwSaving}
@@ -157,7 +171,7 @@ export default function Security() {
         )}
       </section>
 
-      <section className="overflow-hidden rounded-md border border-border bg-surface">
+      <section className="overflow-hidden rounded-md border border-danger/30 bg-surface">
         {!deleteOpen ? (
           <button
             onClick={() => setDeleteOpen(true)}
@@ -169,28 +183,37 @@ export default function Security() {
           <div className="p-4">
             <p className="text-sm font-semibold text-danger">{t('注销后不可恢复')}</p>
             <p className="mt-1 text-[13px] leading-relaxed text-text-sub">
-              {t('该账号的训练记录将被删除，且无法恢复。建议先在')}
+              {t('注销后该账号停止使用，所有设备的登录凭证失效。云端训练记录保留，注销的账号无法再访问。建议先在')}
               <Link to="/profile/data" className="mx-0.5 underline">
                 {t('数据管理')}
               </Link>
               {t('导出备份。')}
             </p>
-            <label className="mt-3 block">
-              <span className="text-[13px] text-text-sub">{user.passwordHash ? t('输入密码确认') : t('确认身份')}</span>
-              {user.passwordHash ? (
+            <p className="mt-2 text-[13px] leading-relaxed text-text-sub">
+              {t('本机训练记录和已导出的备份仍保存在原设备，已发出的分享可能仍可查看。')}
+            </p>
+            {user.passwordHash ? (
+              <label className="mt-3 block">
+                <span className="text-[13px] text-text-sub">{t('输入密码确认')}</span>
                 <input
                   type="password"
+                  autoComplete="current-password"
                   value={deletePw}
                   onChange={(e) => setDeletePw(e.target.value)}
                   className={inputCls}
                 />
-              ) : (
-                <p className="mt-1 text-[13px] text-text-sub">{t('当前账号未设置密码，确认后直接注销。')}</p>
-              )}
-            </label>
-            {deleteError && <p className="mt-2 text-[13px] text-danger">{t(deleteError)}</p>}
+              </label>
+            ) : cloud && (
+              <ContactVerification user={user} value={deleteVerification} onChange={setDeleteVerification} disabled={deleteSaving} />
+            )}
+            {deleteError && <p role="alert" className="mt-2 text-[13px] text-danger">{t(deleteError)}</p>}
             <div className="mt-3 flex gap-2">
-              <button onClick={() => setDeleteOpen(false)} disabled={deleteSaving} className="flex-1 rounded-md border border-border py-2.5 text-sm disabled:opacity-60">
+              <button onClick={() => {
+                setDeleteOpen(false)
+                setDeletePw('')
+                setDeleteVerification(undefined)
+                setDeleteError('')
+              }} disabled={deleteSaving} className="flex-1 rounded-md border border-border py-2.5 text-sm disabled:opacity-60">
                 {t('取消')}
               </button>
               <button onClick={handleDelete} disabled={deleteSaving} className="flex-1 rounded-md bg-danger py-2.5 text-sm font-semibold text-bg disabled:opacity-60">

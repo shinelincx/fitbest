@@ -21,6 +21,7 @@ import {
   updateAccount as updateAccountApi,
   type Account,
   type ProfilePatch,
+  type Verification,
 } from '../utils/auth'
 import { isNative } from '../platform/runtime'
 
@@ -32,16 +33,16 @@ interface AuthValue {
   loginWithEmail: (email: string, code: string) => Promise<void>
   loginWithWechat: () => Promise<Account | null>
   loginWithWechatPhone: (phone: string, code: string) => Promise<void>
-  bindEmail: (email: string, code: string) => Promise<void>
-  bindPhone: (phone: string, code: string) => Promise<void>
+  bindEmail: (email: string, code: string, verification?: Verification) => Promise<void>
+  bindPhone: (phone: string, code: string, verification?: Verification) => Promise<void>
   bindWechat: () => Promise<void>
-  unbindEmail: () => Promise<void>
+  unbindEmail: (verification?: Verification) => Promise<void>
   unbindWechat: () => Promise<void>
   logout: () => Promise<void>
   updateProfile: (patch: ProfilePatch) => Promise<void>
   changePassword: (oldPassword: string, newPassword: string) => Promise<void>
-  setPassword: (newPassword: string) => Promise<void>
-  deleteAccount: (password?: string) => Promise<void>
+  setPassword: (newPassword: string, verification?: Verification) => Promise<void>
+  deleteAccount: (password?: string, verification?: Verification) => Promise<void>
 }
 
 const AuthContext = createContext<AuthValue | null>(null)
@@ -80,14 +81,14 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     setUser(await loginWithWechatPhoneApi(phone, code))
   }
 
-  async function bindEmail(email: string, code: string) {
+  async function bindEmail(email: string, code: string, verification?: Verification) {
     if (!user) throw new Error('请先登录')
-    setUser(await bindEmailApi(user.id, email, code))
+    setUser(await bindEmailApi(user.id, email, code, verification))
   }
 
-  async function bindPhone(phone: string, code: string) {
+  async function bindPhone(phone: string, code: string, verification?: Verification) {
     if (!user) throw new Error('请先登录')
-    setUser(await bindPhoneApi(user.id, phone, code))
+    setUser(await bindPhoneApi(user.id, phone, code, verification))
   }
 
   async function bindWechat() {
@@ -95,9 +96,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     setUser(await bindWechatApi(user.id))
   }
 
-  async function unbindEmail() {
+  async function unbindEmail(verification?: Verification) {
     if (!user) throw new Error('请先登录')
-    setUser(await unbindEmailApi(user.id))
+    setUser(await unbindEmailApi(user.id, verification))
   }
 
   async function unbindWechat() {
@@ -120,14 +121,14 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     setUser(await changePasswordApi(user.id, oldPassword, newPassword))
   }
 
-  async function setPassword(newPassword: string) {
+  async function setPassword(newPassword: string, verification?: Verification) {
     if (!user) throw new Error('请先登录')
-    setUser(await setPasswordApi(user.id, newPassword))
+    setUser(await setPasswordApi(user.id, newPassword, verification))
   }
 
-  async function deleteAccount(password?: string) {
+  async function deleteAccount(password?: string, verification?: Verification) {
     if (!user) throw new Error('请先登录')
-    await deleteAccountApi(user.id, password)
+    await deleteAccountApi(user.id, password, verification)
     setUser(null)
   }
 

@@ -32,6 +32,8 @@ export type ProfilePatch = Partial<
 >
 
 export type IdentityKind = 'phone' | 'email' | 'wechat'
+export type Verification = { channel: 'phone' | 'email'; code: string }
+export type CodeDelivery = { devCode?: string; cooldown?: number; expiresIn?: number }
 
 const USERS_KEY = 'fitbest:users'
 const SESSION_KEY = 'fitbest:session'
@@ -242,6 +244,11 @@ function consumeCode(purpose: 'sms' | 'email', target: string, code: string) {
 
 type CodeScene = 'login' | 'bind'
 
+export function sendSecurityCode(id: string, channel: Verification['channel']): Promise<CodeDelivery> {
+  if (!isCloudUser(id)) throw new Error(i18n.t('请先登录'))
+  return request('/me/security/code', { method: 'POST', body: { channel }, userId: id })
+}
+
 export async function sendSmsCode(phone: string, scene: CodeScene = 'login'): Promise<string> {
   const p = phone.trim()
   if (!PHONE_RE.test(p)) throw new Error('请输入正确的 11 位手机号')
@@ -327,7 +334,7 @@ export async function loginWithWechatPhone(_phone: string, _code: string): Promi
   throw new Error(i18n.t('微信登录即将开放，请先使用手机号或邮箱登录'))
 }
 
-export async function bindEmail(id: string, email: string, code: string): Promise<Account> {
+export async function bindEmail(id: string, email: string, code: string, verification?: Verification): Promise<Account> {
   const e = normalizeEmail(email)
   if (!EMAIL_RE.test(e)) throw new Error('请输入正确的邮箱地址')
   if (!isCloudUser(id)) {
@@ -345,12 +352,12 @@ export async function bindEmail(id: string, email: string, code: string): Promis
   const profile = await request<CloudProfile>('/me/identities/email', {
     method: 'POST',
     userId: id,
-    body: { email: e, code: code.trim() },
+    body: { email: e, code: code.trim(), verification },
   })
   return saveCloudProfile(id, profile)
 }
 
-export async function bindPhone(id: string, phone: string, code: string): Promise<Account> {
+export async function bindPhone(id: string, phone: string, code: string, verification?: Verification): Promise<Account> {
   const p = phone.trim()
   if (!PHONE_RE.test(p)) throw new Error('请输入正确的 11 位手机号')
   if (!isCloudUser(id)) {
@@ -370,7 +377,7 @@ export async function bindPhone(id: string, phone: string, code: string): Promis
   const profile = await request<CloudProfile>('/me/identities/phone', {
     method: 'POST',
     userId: id,
-    body: { phone: p, code: code.trim() },
+    body: { phone: p, code: code.trim(), verification },
   })
   return saveCloudProfile(id, profile)
 }
@@ -383,7 +390,7 @@ function methodCount(account: Account): number {
   return [account.phone, account.email, account.wechatOpenid].filter(Boolean).length
 }
 
-export async function unbindEmail(id: string): Promise<Account> {
+export async function unbindEmail(id: string, verification?: Verification): Promise<Account> {
   if (!isCloudUser(id)) {
     const users = readUsers()
     const index = users.findIndex((u) => u.id === id)
@@ -396,7 +403,7 @@ export async function unbindEmail(id: string): Promise<Account> {
     writeUsers(list)
     return next
   }
-  const profile = await request<CloudProfile>('/me/identities/email', { method: 'DELETE', userId: id })
+  const profile = await request<CloudProfile>('/me/identities/email', { method: 'DELETE', userId: id, body: verification })
   return saveCloudProfile(id, profile)
 }
 
@@ -471,11 +478,11 @@ export async function updateAccount(id: string, patch: ProfilePatch): Promise<Ac
   return saved ?? saveCloudProfile(id, await request<CloudProfile>('/me', { userId: id }))
 }
 
-async function saveCloudPassword(id: string, password: string, oldPassword?: string): Promise<Account> {
+async function saveCloudPassword(id: string, password: string, oldPassword?: string, verification?: Verification): Promise<Account> {
   const result = await request<{ ok: boolean }>('/me/password', {
     method: 'PUT',
     userId: id,
-    body: { password, oldPassword },
+    body: { password, oldPassword, verification },
   })
   if (result?.ok !== true) throw new Error(i18n.t('修改失败，请重试'))
   const current = getSessionUser()
@@ -499,9 +506,9 @@ export async function changePassword(id: string, oldPassword: string, newPasswor
   return list[index]
 }
 
-export async function setPassword(id: string, newPassword: string): Promise<Account> {
+export async function setPassword(id: string, newPassword: string, verification?: Verification): Promise<Account> {
   if (newPassword.length < 6) throw new Error('密码至少 6 位')
-  if (isCloudUser(id)) return saveCloudPassword(id, newPassword)
+  if (isCloudUser(id)) return saveCloudPassword(id, newPassword, undefined, verification)
   const users = readUsers()
   const index = users.findIndex((u) => u.id === id)
   if (index < 0) throw new Error('账号不存在，请重新登录')
@@ -511,12 +518,12 @@ export async function setPassword(id: string, newPassword: string): Promise<Acco
   return list[index]
 }
 
-export async function deleteAccount(id: string, password?: string): Promise<void> {
+export async function deleteAccount(id: string, password?: string, verification?: Verification): Promise<void> {
   if (isCloudUser(id)) {
     const result = await request<{ ok: boolean }>('/me', {
       method: 'DELETE',
       userId: id,
-      body: password ? { password } : undefined,
+      body: password || verification ? { password, verification } : undefined,
     })
     if (result?.ok !== true) throw new Error(i18n.t('注销失败，请重试'))
     if (!isCloudUser(id)) throw new Error(i18n.t('登录账号已切换'))

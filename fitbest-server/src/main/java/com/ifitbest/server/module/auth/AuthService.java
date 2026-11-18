@@ -77,10 +77,16 @@ public class AuthService {
     // ---------- 验证码发送 ----------
 
     public Map<String, Object> sendSms(String phone, String scene) {
-        String code = codes.issue(RedisCodeService.Channel.sms, scene(scene), phone);
-        String template = "bind".equals(scene) ? props.getAliyun().getSmsTemplateBind() : props.getAliyun().getSmsTemplateLogin();
+        return sendSms(phone, scene(scene));
+    }
+
+    private Map<String, Object> sendSms(String phone, RedisCodeService.Scene purpose) {
+        String code = codes.issue(RedisCodeService.Channel.sms, purpose, phone);
+        String scene = purpose.name();
+        String templateScene = purpose == RedisCodeService.Scene.login ? "login" : "bind";
+        String template = "bind".equals(templateScene) ? props.getAliyun().getSmsTemplateBind() : props.getAliyun().getSmsTemplateLogin();
         try {
-            SmsGateway.SendResult result = sms.sendCode(phone, code, scene);
+            SmsGateway.SendResult result = sms.sendCode(phone, code, templateScene);
             logMessage("sms", phone, scene, template, result.providerMsgId(), result.dev() ? "dev" : "sent", null);
             if (result.dev() && !devCodeVisible(phone)) {
                 throw BizException.badRequest("短信服务尚未配置，当前仅支持测试号码登录");
@@ -88,6 +94,7 @@ public class AuthService {
             Map<String, Object> out = new LinkedHashMap<>();
             out.put("sent", true);
             out.put("cooldown", props.getAuth().getCooldown());
+            out.put("expiresIn", props.getAuth().getCodeTtl());
             if (result.dev() && devCodeVisible(phone)) {
                 out.put("devCode", code);
             }
@@ -101,7 +108,12 @@ public class AuthService {
     }
 
     public Map<String, Object> sendEmail(String emailAddr, String scene) {
-        String code = codes.issue(RedisCodeService.Channel.email, scene(scene), emailAddr);
+        return sendEmail(emailAddr, scene(scene));
+    }
+
+    private Map<String, Object> sendEmail(String emailAddr, RedisCodeService.Scene purpose) {
+        String code = codes.issue(RedisCodeService.Channel.email, purpose, emailAddr);
+        String scene = purpose.name();
         try {
             EmailGateway.SendResult result = email.sendCode(emailAddr, code);
             logMessage("email", emailAddr, scene, "FITBEST_LOGIN_CODE", result.providerMsgId(), result.dev() ? "dev" : "sent", null);
@@ -111,6 +123,7 @@ public class AuthService {
             Map<String, Object> out = new LinkedHashMap<>();
             out.put("sent", true);
             out.put("cooldown", props.getAuth().getCooldown());
+            out.put("expiresIn", props.getAuth().getCodeTtl());
             if (result.dev() && devCodeVisible(emailAddr)) {
                 out.put("devCode", code);
             }
@@ -121,6 +134,14 @@ public class AuthService {
             logMessage("email", emailAddr, scene, "FITBEST_LOGIN_CODE", null, "failed", e.getMessage());
             throw BizException.badRequest("邮件发送失败，请稍后重试");
         }
+    }
+
+    public Map<String, Object> sendSecurityCode(IdentityType type, String target) {
+        return switch (type) {
+            case phone -> sendSms(target, RedisCodeService.Scene.security);
+            case email -> sendEmail(target, RedisCodeService.Scene.security);
+            default -> throw BizException.badRequest("请选择已验证的手机号或邮箱");
+        };
     }
 
     private boolean devCodeVisible(String target) {
