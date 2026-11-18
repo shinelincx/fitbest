@@ -6,7 +6,9 @@ import java.util.Map;
 
 import com.ifitbest.server.common.auth.JwtCodec.AdminPayload;
 import com.ifitbest.server.common.error.BizException;
+import com.ifitbest.server.infra.persistence.AdminUser;
 import com.ifitbest.server.infra.persistence.MachineType;
+import org.springframework.dao.DataIntegrityViolationException;
 import com.ifitbest.server.infra.persistence.WriteLocks;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Service;
@@ -54,6 +56,64 @@ public class CatalogService {
         if (machineTypes().stream().noneMatch(type -> type.code().equals(code.name()) && type.selectable())) {
             throw BizException.badRequest("该器械类型已停止用于新增型号");
         }
+    }
+
+    public record Region(String code, String name, String parentCode, int level) {}
+
+    public List<Region> regions() {
+        return jdbc.query("select code, name, parent_code, level from regions order by code",
+            (rs, row) -> new Region(rs.getString(1), rs.getString(2), rs.getString(3), rs.getInt(4)));
+    }
+
+    private AdminUser regionEditor(AdminPayload payload) {
+        SystemAdminService.lockAccounts(locks);
+        var actor = accounts.current(payload);
+        SystemAdminService.requirePlatform(actor);
+        return actor;
+    }
+
+    @Transactional
+    public void createRegion(AdminPayload payload, String code, String name, String parentCode) {
+        var actor = regionEditor(payload);
+        int level = 1;
+        if (parentCode != null) {
+            var parents = jdbc.queryForList("select level from regions where code = ?", Integer.class, parentCode);
+            if (parents.isEmpty() || parents.get(0) >= 3) throw BizException.badRequest("请选择省或市作为上级地区");
+            level = parents.get(0) + 1;
+        }
+        int inserted = jdbc.update("insert into regions(code, name, parent_code, level) values (?,?,?,?) on conflict (code) do nothing",
+            code, name.trim(), parentCode, level);
+        if (inserted == 0) throw BizException.conflict("地区编码已存在");
+        audit.record(actor, null, null, "region.create", "region", code, Map.of("name", name.trim()));
+    }
+
+    @Transactional
+    public void renameRegion(AdminPayload payload, String code, String name) {
+        var actor = regionEditor(payload);
+        if (jdbc.update("update regions set name = ? where code = ?", name.trim(), code) == 0) {
+            throw BizException.notFound("地区不存在");
+        }
+        audit.record(actor, null, null, "region.rename", "region", code, Map.of("name", name.trim()));
+    }
+
+    @Transactional
+    public void deleteRegion(AdminPayload payload, String code) {
+        var actor = regionEditor(payload);
+        try {
+            if (jdbc.update("delete from regions where code = ?", code) == 0) throw BizException.notFound("地区不存在");
+        } catch (DataIntegrityViolationException ex) {
+            throw BizException.conflict("地区下仍有子地区或关联门店，无法删除");
+        }
+        audit.record(actor, null, null, "region.delete", "region", code, Map.of());
+    }
+
+    public String districtCode(String code) {
+        if (code == null || code.isBlank()) return null;
+        if (!Boolean.TRUE.equals(jdbc.queryForObject(
+            "select exists(select 1 from regions where code = ? and level = 3)", Boolean.class, code))) {
+            throw BizException.badRequest("请选择有效的区/县");
+        }
+        return code;
     }
 
     public BusinessSettings settings() {

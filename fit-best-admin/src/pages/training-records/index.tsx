@@ -85,7 +85,7 @@ export default function TrainingRecords() {
     try {
       await exportCsvPages(
         message,
-        '训练记录',
+        '品牌训练记录',
         ['用户', '品牌', '是否完成', '用时(分钟)', '距离(km)', '平均心率', '最大心率', 'RPE', '短板站点', '开始时间', '创建时间'],
         (page, pageSize) => adminApi.trainingRecords({ ...paramsOf(applied), page, pageSize }),
         (row) => [
@@ -195,7 +195,7 @@ export default function TrainingRecords() {
   return (
     <div>
       <Title level={4} style={{ marginTop: 0, marginBottom: 4 }}>
-        训练记录
+        品牌训练记录
       </Title>
       <Text type="secondary" style={{ fontSize: 13, marginBottom: 20, display: 'block' }}>
         {brand === 'all' ? '跨品牌汇总的训练记录' : `${BRAND_META[brand].label} 专属训练记录`}

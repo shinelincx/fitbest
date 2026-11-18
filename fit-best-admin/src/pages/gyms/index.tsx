@@ -1,6 +1,7 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import {
   Button,
+  Cascader,
   Form,
   Input,
   Modal,
@@ -17,7 +18,8 @@ import { EditOutlined, DeleteOutlined, PlusOutlined, ReloadOutlined, Environment
 import dayjs from 'dayjs'
 import { useSearchParams } from 'react-router-dom'
 import { adminApi } from '@/api/admin'
-import { systemApi, type Organization } from '@/api/system'
+import { systemApi, type Organization, type Region } from '@/api/system'
+import { regionTree } from '@/utils/regions'
 import { useAdminStore } from '@/store/admin'
 
 const { Title, Text } = Typography
@@ -28,40 +30,40 @@ const STATUS_MAP: Record<string, { label: string; color: string }> = {
   maintenance: { label: '维护中', color: 'orange' },
 }
 
-interface GymRow {
-  id: string
-  orgId: string
-  orgName: string
-  name: string
-  code: string
-  address: string | null
-  timezone: string
-  status: string
-  machineCount: number
-  createdAt: string
-}
+type GymRow = Awaited<ReturnType<typeof adminApi.gyms>>[number]
 
 export default function Gyms() {
   const actor = useAdminStore(s => s.admin)
   const [params] = useSearchParams()
   const selectedOrg = params.get('orgId')
   const [organizations, setOrganizations] = useState<Organization[]>([])
-  const [defaultTimezone, setDefaultTimezone] = useState('Asia/Shanghai')
+  const [regions, setRegions] = useState<Region[]>([])
+  const options = useMemo(() => regionTree(regions), [regions])
+  const byCode = useMemo(() => new Map(regions.map(r => [r.code, r])), [regions])
+  function addressPath(code: string | null) {
+    const path: Region[] = []
+    let region = code && byCode.get(code)
+    while (region) {
+      path.unshift(region)
+      region = region.parentCode && byCode.get(region.parentCode)
+    }
+    return path
+  }
   const [list, setList] = useState<GymRow[]>([])
   const [loading, setLoading] = useState(false)
   const [open, setOpen] = useState(false)
   const [editing, setEditing] = useState<GymRow | null>(null)
   const [form] = Form.useForm()
-  const canWrite = actor?.role !== 'viewer'
+  const canWrite = !!actor && actor.role !== 'viewer'
 
   const refresh = async () => {
     setLoading(true)
     try {
-      const [gyms, settings, orgs] = await Promise.all([
-        adminApi.gyms(), systemApi.settings(), actor?.role === 'super' ? systemApi.organizations() : [],
+      const [gyms, areas, orgs] = await Promise.all([
+        adminApi.gyms(), systemApi.regions(), actor?.role === 'super' ? systemApi.organizations() : [],
       ])
       setList(gyms)
-      setDefaultTimezone(settings.defaultGymTimezone)
+      setRegions(areas)
       setOrganizations(orgs)
     } catch {
       // API 拦截器显示错误。
@@ -71,19 +73,19 @@ export default function Gyms() {
   }
 
   useEffect(() => {
-    refresh()
-  }, [])
+    if (actor) void refresh()
+  }, [actor?.role])
 
   const openCreate = () => {
     setEditing(null)
     form.resetFields()
-    form.setFieldsValue({ timezone: defaultTimezone, orgId: selectedOrg ?? actor?.orgId })
+    form.setFieldsValue({ orgId: selectedOrg ?? actor?.orgId })
     setOpen(true)
   }
 
   const openEdit = (r: GymRow) => {
     setEditing(r)
-    form.setFieldsValue(r)
+    form.setFieldsValue({ ...r, region: addressPath(r.districtCode).map(area => area.code) })
     setOpen(true)
   }
 
@@ -94,8 +96,8 @@ export default function Gyms() {
         await adminApi.updateGym(editing.id, {
           name: values.name,
           code: values.code,
-          address: values.address ?? null,
-          timezone: values.timezone,
+          address: values.address?.trim() ?? '',
+          districtCode: values.region?.[2] ?? '',
           status: values.status,
         })
         message.success('门店已更新')
@@ -105,7 +107,7 @@ export default function Gyms() {
           name: values.name,
           code: values.code,
           address: values.address,
-          timezone: values.timezone,
+          districtCode: values.region?.[2] ?? '',
         })
         message.success('门店已创建')
       }
@@ -137,24 +139,12 @@ export default function Gyms() {
     },
     {
       title: '地址',
-      dataIndex: 'address',
       key: 'address',
-      render: (t: string | null) =>
-        t ? (
-          <span>
-            <EnvironmentOutlined style={{ marginRight: 6, color: '#8c8c8c' }} />
-            {t}
-          </span>
-        ) : (
-          <Text type="secondary">-</Text>
-        ),
-    },
-    {
-      title: '时区',
-      dataIndex: 'timezone',
-      key: 'timezone',
-      width: 120,
-      render: (t: string) => <Text code style={{ fontSize: 12 }}>{t}</Text>,
+      render: (_, row) => {
+        const names = addressPath(row.districtCode).map(area => area.name)
+        const address = [...new Set(names), row.address].filter(Boolean).join(' ')
+        return address ? <span><EnvironmentOutlined /> {address}</span> : <Text type="secondary">未填写</Text>
+      },
     },
     {
       title: '器械数',
@@ -209,9 +199,9 @@ export default function Gyms() {
           <Button icon={<ReloadOutlined />} onClick={refresh}>
             刷新
           </Button>
-            {canWrite && <Button type="primary" icon={<PlusOutlined />} onClick={openCreate} disabled={loading}>
+          {canWrite && <Button type="primary" icon={<PlusOutlined />} onClick={openCreate} disabled={loading}>
             新建门店
-            </Button>}
+          </Button>}
         </Space>
       </div>
 
@@ -248,13 +238,16 @@ export default function Gyms() {
               <Input placeholder="SH-001" />
             </Form.Item>
           </div>
-          <Form.Item label="地址" name="address">
-            <Input placeholder="上海市静安区..." />
+          <Form.Item label="省 / 市 / 区县" name="region" rules={[{
+            validator: (_, value) => !value?.length || value.length === 3 ? Promise.resolve() : Promise.reject(new Error('请选择至区/县')),
+          }]}>
+            <Cascader options={options} fieldNames={{ label: 'name', value: 'code', children: 'children' }}
+              showSearch allowClear placeholder="选择省、市、区/县" />
+          </Form.Item>
+          <Form.Item label="详细地址" name="address">
+            <Input maxLength={300} placeholder="街道、门牌号、楼层等" />
           </Form.Item>
           <div style={{ display: 'flex', gap: 16 }}>
-            <Form.Item label="时区" name="timezone" style={{ width: 200 }}>
-              <Input placeholder={defaultTimezone} maxLength={80} />
-            </Form.Item>
             {editing && <Form.Item label="状态" name="status" style={{ flex: 1 }}>
               <Select
                 options={Object.entries(STATUS_MAP).map(([k, v]) => ({ value: k, label: v.label }))}

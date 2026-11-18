@@ -29,6 +29,13 @@ export interface MachineTypeItem {
   selectable: boolean
 }
 
+export interface Region {
+  code: string
+  name: string
+  parentCode: string | null
+  level: number
+}
+
 export interface BusinessSettings {
   defaultGymTimezone: string
 }
@@ -89,6 +96,10 @@ export const systemApi = {
   machineTypes: () => http.get<MachineTypeItem[]>(prefix + '/dictionary/machine-types'),
   updateMachineType: ({ code, ...data }: MachineTypeItem) =>
     http.put(prefix + '/dictionary/machine-types/' + code, data),
+  regions: () => http.get<Region[]>(prefix + '/dictionary/regions'),
+  createRegion: (data: Omit<Region, 'level'>) => http.post(prefix + '/dictionary/regions', data),
+  renameRegion: (code: string, name: string) => http.put(prefix + '/dictionary/regions/' + code, { name }),
+  deleteRegion: (code: string) => http.delete(prefix + '/dictionary/regions/' + code),
   settings: () => http.get<BusinessSettings>(prefix + '/settings'),
   updateSettings: (data: BusinessSettings) => http.put<BusinessSettings>(prefix + '/settings', data),
   website: () => http.get<{ draft: WebsiteDraft; versions: Publication[] }>(prefix + '/website'),

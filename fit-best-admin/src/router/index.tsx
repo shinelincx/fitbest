@@ -16,6 +16,7 @@ const Sessions = lazy(() => import('@/pages/sessions'))
 const TrainingRecords = lazy(() => import('@/pages/training-records'))
 const DeviceSessions = lazy(() => import('@/pages/device-sessions'))
 const Machines = lazy(() => import('@/pages/machines'))
+const MachineModels = lazy(() => import('@/pages/machines/Models'))
 const Gyms = lazy(() => import('@/pages/gyms'))
 const Events = lazy(() => import('@/pages/events'))
 const Audit = lazy(() => import('@/pages/audit'))
@@ -69,6 +70,7 @@ export const router = createBrowserRouter(
           { path: 'training-records', element: withSuspense(<TrainingRecords />) },
           { path: 'device-sessions', element: withSuspense(<DeviceSessions />) },
           { path: 'machines', element: withSuspense(<Machines />) },
+          { path: 'machine-models', element: withSuspense(<MachineModels />) },
           { path: 'gyms', element: withSuspense(<Gyms />) },
           { path: 'events', element: withSuspense(<Events />) },
           { path: 'audit', element: withSuspense(<Audit />) },

@@ -723,6 +723,69 @@ class TrainingSyncPostgresTest {
         }
     }
 
+    @Test
+    void maintainsRegionsAndAssignsInventoryAfterCreation() {
+        UUID org = UUID.randomUUID();
+        UUID other = UUID.randomUUID();
+        seedAdmin(org, "region-platform", "13900000821", "super", false, false);
+        seedAdmin(other, "region-org", "13900000822", "org_admin", false, false);
+        String regions = "/api/v1/admin/system/dictionary/regions";
+        String gyms = "/api/v1/admin/gyms";
+        String models = "/api/v1/admin/machine-models";
+        String machines = "/api/v1/admin/machines";
+        try {
+            String platform = adminLogin("13900000821", "Regression password 42");
+            String scoped = adminLogin("13900000822", "Regression password 42");
+            var district = Map.of("code", "999901", "name", "测试区", "parentCode", "110100");
+            assertThat(adminJson(scoped, HttpMethod.POST, regions, district).getStatusCode().value()).isEqualTo(403);
+            assertThat(adminJson(platform, HttpMethod.POST, regions, district).getStatusCode().is2xxSuccessful()).isTrue();
+            assertThat(adminJson(platform, HttpMethod.PUT, regions + "/999901", Map.of("name", "测试新区"))
+                .getStatusCode().is2xxSuccessful()).isTrue();
+            assertThat(adminJson(platform, HttpMethod.POST, gyms, Map.of("name", "无效", "code", "invalid", "districtCode", "110100"))
+                .getStatusCode().value()).isEqualTo(400);
+            var gym = adminJson(platform, HttpMethod.POST, gyms, Map.of("name", "新店", "code", "valid",
+                "districtCode", "999901", "address", "一楼"));
+            assertThat(field(gym, "districtCode")).isEqualTo("999901");
+            assertThat(adminJson(platform, HttpMethod.DELETE, regions + "/999901", null).getStatusCode().value()).isEqualTo(409);
+            String modelId = field(adminJson(platform, HttpMethod.POST, models, Map.of("type", "rower", "model", "样机")), "id");
+            assertThat(adminJson(platform, HttpMethod.PATCH, models + "/" + modelId, Map.of("model", "样机二代")).getStatusCode().is2xxSuccessful()).isTrue();
+            String gymId = field(gym, "id");
+            jdbc.update("""
+                insert into admin_users (id, org_id, gym_id, name, phone, password_hash, role)
+                select gen_random_uuid(), org_id, ?, '门店管理员', '13900000823', password_hash, 'gym_admin'
+                from admin_users where org_id = ? and role = 'super'
+                """, UUID.fromString(gymId), org);
+            String gymAdmin = adminLogin("13900000823", "Regression password 42");
+            assertThat(adminJson(gymAdmin, HttpMethod.PATCH, models + "/" + modelId, Map.of("model", "改名"))
+                .getStatusCode().value()).isEqualTo(403);
+            assertThat(field(adminJson(gymAdmin, HttpMethod.POST, machines, Map.of("modelId", modelId, "serialNo", "gym-stock")), "gymId"))
+                .isEqualTo(gymId);
+            var inventory = Map.of("modelId", modelId, "serialNo", "region-stock");
+            assertThat(adminJson(scoped, HttpMethod.POST, machines, inventory).getStatusCode().value()).isEqualTo(400);
+            var machine = adminJson(platform, HttpMethod.POST, machines, inventory);
+            assertThat(field(machine, "gymId")).isNull();
+            assertThat(field(machine, "model")).isEqualTo("样机二代");
+            String machineId = field(machine, "id");
+            var gymMachines = (List<?>) adminJson(gymAdmin, HttpMethod.GET, machines, null).getBody();
+            assertThat(gymMachines).singleElement().satisfies(row ->
+                assertThat(((Map<?, ?>) row).get("serialNo")).isEqualTo("gym-stock"));
+            assertThat(adminJson(scoped, HttpMethod.PATCH, machines + "/" + machineId, Map.of("status", "active"))
+                .getStatusCode().value()).isEqualTo(404);
+            var qr = adminJson(platform, HttpMethod.POST, "/api/v1/admin/tags/generate?machineId=" + machineId, null);
+            var resolved = http.postForEntity("/api/v1/scan/resolve", Map.of("kind", "qr", "value", field(qr, "qrValue")), Map.class);
+            assertThat(((Map<?, ?>) resolved.getBody().get("machine")).get("gymId")).isNull();
+            assertThat(field(adminJson(platform, HttpMethod.PATCH, machines + "/" + machineId, Map.of("gymId", field(gym, "id"))), "gymName"))
+                .isEqualTo("新店");
+            assertThat(field(adminJson(platform, HttpMethod.PATCH, gyms + "/" + field(gym, "id"), Map.of("districtCode", "")), "districtCode")).isNull();
+            assertThat(adminJson(platform, HttpMethod.DELETE, regions + "/999901", null).getStatusCode().is2xxSuccessful()).isTrue();
+        } finally {
+            jdbc.update("delete from machines where org_id = ?", org);
+            removeAdminOrg(org);
+            removeAdminOrg(other);
+            jdbc.update("delete from regions where code = '999901'");
+        }
+    }
+
     private String adminLogin(String phone, String password) {
         var response = http.postForEntity("/api/v1/admin/auth/login",
             Map.of("phone", phone, "password", password), Map.class);

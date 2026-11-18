@@ -64,7 +64,7 @@ export default function Sessions() {
     try {
       await exportCsvPages(
         message,
-        '训练明细',
+        '训练记录',
         ['用户', '器械类型', '器械型号', '序列号', '时长(分钟)', '距离(km)', '千卡', '平均心率', '来源', '开始时间'],
         (page, pageSize) => adminApi.sessions({ ...paramsOf(applied), page, pageSize }),
         (row) => [
@@ -162,7 +162,7 @@ export default function Sessions() {
   return (
     <div>
       <Title level={4} style={{ marginTop: 0, marginBottom: 20 }}>
-        训练明细
+        训练记录
       </Title>
 
       <Form

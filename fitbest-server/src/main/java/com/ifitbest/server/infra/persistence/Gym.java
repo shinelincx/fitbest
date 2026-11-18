@@ -31,6 +31,9 @@ public class Gym {
 
     private String address;
 
+    @Column(name = "district_code")
+    private String districtCode;
+
     @Column(nullable = false)
     private String timezone = "Asia/Shanghai";
 

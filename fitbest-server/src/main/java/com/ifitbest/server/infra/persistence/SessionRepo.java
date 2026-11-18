@@ -54,6 +54,8 @@ public interface SessionRepo extends JpaRepository<Session, UUID>, JpaSpecificat
 
     List<Session> findByUserIdOrderByStartedAtDesc(UUID userId, Pageable pageable);
 
+    List<Session> findByUserIdAndGymIdInOrderByStartedAtDesc(UUID userId, List<UUID> gymIds, Pageable pageable);
+
     /** 门店范围内本周会话（管理端 byType 汇总用） */
     List<Session> findByGymIdInAndStartedAtGreaterThanEqual(List<UUID> gymIds, LocalDateTime since);
 

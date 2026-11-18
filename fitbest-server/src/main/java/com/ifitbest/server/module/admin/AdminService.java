@@ -173,7 +173,7 @@ public class AdminService {
             return machine.getOrgId().equals(adminOrgId(admin));
         }
         UUID gymId = adminGymId(admin);
-        return gymId != null && machine.getGymId().equals(gymId);
+        return gymId != null && gymId.equals(machine.getGymId());
     }
 
     private boolean inGymScope(JwtCodec.AdminPayload admin, Gym gym) {
@@ -281,6 +281,10 @@ public class AdminService {
         };
     }
 
+    private Gym machineGym(Machine machine) {
+        return machine.getGymId() == null ? null : gyms.findById(machine.getGymId()).orElse(null);
+    }
+
     private Map<String, Object> machineView(Machine machine, MachineModel model, Gym gym) {
         Map<String, Object> out = new LinkedHashMap<>();
         out.put("id", machine.getId().toString());
@@ -292,7 +296,7 @@ public class AdminService {
         out.put("serialNo", machine.getSerialNo());
         out.put("status", machine.getStatus().name());
         out.put("firmware", machine.getFirmware());
-        out.put("gymId", machine.getGymId().toString());
+        out.put("gymId", java.util.Objects.toString(machine.getGymId(), null));
         out.put("gymName", gym == null ? null : gym.getName());
         out.put("createdAt", machine.getCreatedAt());
         return out;
@@ -357,11 +361,7 @@ public class AdminService {
 
         long activeMachines = machines.findAll().stream()
             .filter(m -> m.getStatus() == MachineStatus.active)
-            .filter(m -> gymScope == null
-                ? true
-                : ("org_admin".equals(admin.role())
-                    ? m.getOrgId().equals(adminOrgId(admin))
-                    : gymScope.contains(m.getGymId())))
+            .filter(m -> inMachineScope(admin, m))
             .count();
 
         long gymsCount;
@@ -513,9 +513,10 @@ public class AdminService {
         }
 
         List<UUID> gymScope = scopeGymIds(admin);
-        List<Session> sessionRows = sessions.findByUserIdOrderByStartedAtDesc(id, PageRequest.of(0, 10)).stream()
-            .filter(s -> gymScope == null || gymScope.contains(s.getGymId()))
-            .toList();
+        PageRequest recentSessions = PageRequest.of(0, 10);
+        List<Session> sessionRows = gymScope == null
+            ? sessions.findByUserIdOrderByStartedAtDesc(id, recentSessions)
+            : sessions.findByUserIdAndGymIdInOrderByStartedAtDesc(id, gymScope, recentSessions);
 
         List<UserIdentity> ids = identities.findByUserIdOrderByCreatedAtAsc(id);
         UserGoal goal = goals.findById(id).orElse(null);
@@ -814,7 +815,7 @@ public class AdminService {
 
         return machines.findAll(Sort.by(Sort.Order.desc("createdAt"))).stream()
             .filter(m -> inMachineScope(admin, m))
-            .filter(m -> gymFilter == null || m.getGymId().equals(gymFilter))
+            .filter(m -> gymFilter == null || gymFilter.equals(m.getGymId()))
             .filter(m -> modelById.containsKey(m.getModelId()))
             .map(m -> machineView(m, modelById.get(m.getModelId()), gymById.get(m.getGymId())))
             .toList();
@@ -823,15 +824,15 @@ public class AdminService {
     @Transactional
     public Map<String, Object> createMachine(JwtCodec.AdminPayload admin, UUID inputOrgId, UUID inputGymId,
                                              UUID modelId, String serialNo, MachineStatus status, String firmware) {
-        UUID orgId = resolveOrgId(admin, inputOrgId);
-        UUID gymId = resolveWritableGymId(admin, inputGymId);
-        if (gymId == null) {
-            throw BizException.badRequest("请选择门店");
-        }
-
-        Gym gym = gyms.findById(gymId).orElse(null);
         MachineModel model = machineModels.findById(modelId).orElse(null);
-        if (gym == null || !gym.getOrgId().equals(orgId)) {
+        UUID orgId = isSuper(admin) && inputOrgId == null && model != null ? model.getOrgId() : resolveOrgId(admin, inputOrgId);
+        UUID gymId = resolveWritableGymId(admin, inputGymId);
+        if (!isSuper(admin) && !"org_admin".equals(admin.role())
+            && (gymId == null || (inputGymId != null && !gymId.equals(inputGymId)))) {
+            throw BizException.badRequest("只能在所属门店创建器械");
+        }
+        Gym gym = gymId == null ? null : gyms.findById(gymId).orElse(null);
+        if (gymId != null && (gym == null || !gym.getOrgId().equals(orgId))) {
             throw BizException.badRequest("门店不属于该组织");
         }
         if (model == null || !model.getOrgId().equals(orgId)) {
@@ -848,7 +849,7 @@ public class AdminService {
             machine.setStatus(status == null ? MachineStatus.active : status);
             machine.setFirmware(firmware);
             machine.setCreatedAt(Times.nowUtc());
-            machines.save(machine);
+            machines.saveAndFlush(machine);
             return machineView(machine, model, gym);
         } catch (DataIntegrityViolationException e) {
             throw BizException.conflict("该序列号已存在");
@@ -876,13 +877,16 @@ public class AdminService {
         machines.save(machine);
 
         MachineModel model = machineModels.findById(machine.getModelId()).orElseThrow();
-        return machineView(machine, model, gyms.findById(machine.getGymId()).orElse(null));
+        return machineView(machine, model, machineGym(machine));
     }
 
     @Transactional(readOnly = true)
     public List<Map<String, Object>> machineModels(JwtCodec.AdminPayload admin) {
         Map<UUID, Long> machineCounts = new LinkedHashMap<>();
-        machines.findAll().forEach(m -> machineCounts.merge(m.getModelId(), 1L, Long::sum));
+        machines.findAll().stream().filter(m -> inMachineScope(admin, m))
+            .forEach(m -> machineCounts.merge(m.getModelId(), 1L, Long::sum));
+        Map<UUID, String> orgNames = new LinkedHashMap<>();
+        if (isSuper(admin)) orgs.findAll().forEach(o -> orgNames.put(o.getId(), o.getName()));
 
         return machineModels.findAll(Sort.by(Sort.Order.asc("type"), Sort.Order.asc("model"))).stream()
             .filter(m -> isSuper(admin) || m.getOrgId().equals(adminOrgId(admin)))
@@ -890,6 +894,7 @@ public class AdminService {
                 Map<String, Object> out = new LinkedHashMap<>();
                 out.put("id", m.getId().toString());
                 out.put("orgId", m.getOrgId().toString());
+                out.put("orgName", orgNames.get(m.getOrgId()));
                 out.put("type", m.getType().name());
                 out.put("model", m.getModel());
                 out.put("brand", m.getBrand());
@@ -916,9 +921,26 @@ public class AdminService {
             machineModel.setBrand(brand);
             machineModel.setSpecs(writeJson(specs));
             machineModel.setCreatedAt(Times.nowUtc());
-            machineModels.save(machineModel);
+            machineModels.saveAndFlush(machineModel);
             return Map.of("id", machineModel.getId().toString());
         } catch (DataIntegrityViolationException e) {
+            throw BizException.conflict("该型号已存在");
+        }
+    }
+
+    @Transactional
+    public void updateMachineModel(JwtCodec.AdminPayload admin, UUID id, String name, String brand) {
+        if (!isSuper(admin) && !"org_admin".equals(admin.role())) {
+            throw BizException.forbidden("仅平台或组织管理员可修改组织共用的型号");
+        }
+        MachineModel model = machineModels.findById(id)
+            .filter(m -> isSuper(admin) || m.getOrgId().equals(adminOrgId(admin)))
+            .orElseThrow(() -> BizException.notFound("器械型号不存在"));
+        model.setModel(name.trim());
+        model.setBrand(brand);
+        try {
+            machineModels.saveAndFlush(model);
+        } catch (DataIntegrityViolationException ex) {
             throw BizException.conflict("该型号已存在");
         }
     }
@@ -927,7 +949,7 @@ public class AdminService {
     public Map<String, Object> generateQrTag(JwtCodec.AdminPayload admin, UUID machineId) {
         Machine machine = lookupMachineInScope(admin, machineId);
         MachineModel model = machineModels.findById(machine.getModelId()).orElseThrow();
-        Gym gym = gyms.findById(machine.getGymId()).orElse(null);
+        Gym gym = machineGym(machine);
 
         MachineTag existing = tags.findFirstByMachineIdAndTagTypeAndStatus(machineId, TagType.qr, TagStatus.active).orElse(null);
         if (existing != null) {
@@ -956,7 +978,7 @@ public class AdminService {
     public Map<String, Object> createNfcTag(JwtCodec.AdminPayload admin, UUID machineId, String tagValue) {
         Machine machine = lookupMachineInScope(admin, machineId);
         MachineModel model = machineModels.findById(machine.getModelId()).orElseThrow();
-        Gym gym = gyms.findById(machine.getGymId()).orElse(null);
+        Gym gym = machineGym(machine);
 
         try {
             MachineTag tag = new MachineTag();
@@ -1135,6 +1157,7 @@ public class AdminService {
         out.put("name", gym.getName());
         out.put("code", gym.getCode());
         out.put("address", gym.getAddress());
+        out.put("districtCode", gym.getDistrictCode());
         out.put("timezone", gym.getTimezone());
         out.put("status", gym.getStatus());
         out.put("machineCount", machineCount);
@@ -1144,7 +1167,7 @@ public class AdminService {
 
     @Transactional
     public Map<String, Object> createGym(JwtCodec.AdminPayload admin, UUID inputOrgId, String name,
-                                         String code, String address, String timezone) {
+                                         String code, String address, String timezone, String districtCode) {
         SystemAdminService.lockAccounts(locks);
         UUID orgId = resolveOrgId(admin, inputOrgId);
         ensureActiveOrg(orgId);
@@ -1155,6 +1178,7 @@ public class AdminService {
             gym.setName(name);
             gym.setCode(code);
             gym.setAddress(address);
+            gym.setDistrictCode(catalog.districtCode(districtCode));
             gym.setTimezone(catalog.gymTimezone(timezone));
             gym.setCreatedAt(Times.nowUtc());
             gyms.save(gym);
@@ -1167,7 +1191,7 @@ public class AdminService {
 
     @Transactional
     public Map<String, Object> updateGym(JwtCodec.AdminPayload admin, UUID id, String name, String code,
-                                         String address, String timezone, String status) {
+                                         String address, String timezone, String status, String districtCode) {
         SystemAdminService.lockAccounts(locks);
         Gym gym = gyms.findById(id).filter(g -> inGymScope(admin, g)).orElse(null);
         if (gym == null) {
@@ -1182,6 +1206,7 @@ public class AdminService {
         if (address != null) {
             gym.setAddress(address);
         }
+        if (districtCode != null) gym.setDistrictCode(catalog.districtCode(districtCode));
         if (timezone != null) {
             gym.setTimezone(catalog.gymTimezone(timezone));
         }

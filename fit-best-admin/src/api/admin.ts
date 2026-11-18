@@ -211,11 +211,11 @@ export const adminApi = {
       serialNo: string
       status: string
       firmware: string | null
-      gymId: string
-      gymName: string
+      gymId: string | null
+      gymName: string | null
       createdAt: string
     }>>('/admin/machines', { params: { gymId } }),
-  createMachine: (data: { gymId: string; modelId: string; serialNo: string; status?: string; firmware?: string }) =>
+  createMachine: (data: { gymId?: string; modelId: string; serialNo: string; status?: string; firmware?: string }) =>
     http.post('/admin/machines', data),
   updateMachine: (id: string, data: { gymId?: string; status?: string; firmware?: string | null }) =>
     http.patch(`/admin/machines/${id}`, data),
@@ -223,6 +223,7 @@ export const adminApi = {
     http.get<Array<{
       id: string
       orgId: string
+      orgName: string | null
       type: string
       model: string
       brand: string | null
@@ -230,8 +231,10 @@ export const adminApi = {
       machineCount: number
       createdAt: string
     }>>('/admin/machine-models'),
-  createMachineModel: (data: { type: string; model: string; brand?: string; specs?: Record<string, unknown> }) =>
+  createMachineModel: (data: { orgId?: string; type: string; model: string; brand?: string; specs?: Record<string, unknown> }) =>
     http.post('/admin/machine-models', data),
+  updateMachineModel: (id: string, data: { model: string; brand?: string }) =>
+    http.patch('/admin/machine-models/' + id, data),
   generateQrTag: (machineId: string) =>
     http.post<{ machine: unknown; tag: unknown; qrValue: string }>('/admin/tags/generate', null, { params: { machineId } }),
   createNfcTag: (machineId: string, tagValue: string) =>
@@ -265,14 +268,14 @@ export const adminApi = {
       name: string
       code: string
       address: string | null
-      timezone: string
+      districtCode: string | null
       status: string
       machineCount: number
       createdAt: string
     }>>('/admin/gyms'),
-  createGym: (data: { orgId?: string; name: string; code: string; address?: string; timezone?: string }) =>
+  createGym: (data: { orgId?: string; name: string; code: string; address?: string; districtCode?: string }) =>
     http.post('/admin/gyms', data),
-  updateGym: (id: string, data: { name?: string; code?: string; address?: string | null; timezone?: string; status?: string }) =>
+  updateGym: (id: string, data: { name?: string; code?: string; address?: string; districtCode?: string; status?: string }) =>
     http.patch(`/admin/gyms/${id}`, data),
   deleteGym: (id: string) => http.delete(`/admin/gyms/${id}`),
 }

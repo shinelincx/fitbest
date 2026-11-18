@@ -259,7 +259,7 @@ export default function Dashboard() {
           >
             <Text type="secondary" style={{ fontSize: 13, lineHeight: 1.8 }}>
               {brand === 'all'
-                ? '顶部切换 HYROX / BTWE 可查看单品牌的训练 KPI。器械明细与门店数据不区分品牌。'
+                ? '顶部切换 HYROX / BTWE 可查看单品牌的训练 KPI。器械训练与门店数据不区分品牌。'
                 : `已锁定 ${activeMeta.label}。若需查看门店、器械等全渠道数据，请切换到「全部」。`}
             </Text>
           </Card>

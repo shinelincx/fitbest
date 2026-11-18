@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react'
 import { Button, Card, Form, Input, InputNumber, Modal, Space, Switch, Table, Tag, Typography, message } from 'antd'
+import Regions from './Regions'
 import { systemApi, type BusinessSettings, type MachineTypeItem } from '@/api/system'
 
 export default function Catalog() {
@@ -64,6 +65,7 @@ export default function Catalog() {
           { title: '操作', render: (_, row) => <Button type="link" onClick={() => { form.setFieldsValue(row); setEditing(row) }}>编辑</Button> },
         ]} />
       </Card>
+      <Regions />
       {initialSettings && (
         <Card title="业务设置">
           <Form<BusinessSettings> layout="vertical" initialValues={initialSettings} onFinish={saveSettings} disabled={saving}

@@ -28,7 +28,7 @@ public class Machine {
     @Column(name = "org_id", nullable = false)
     private UUID orgId;
 
-    @Column(name = "gym_id", nullable = false)
+    @Column(name = "gym_id")
     private UUID gymId;
 
     @Column(name = "serial_no", nullable = false, unique = true)

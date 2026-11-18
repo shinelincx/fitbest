@@ -1,9 +1,12 @@
 import { useEffect, useState } from 'react'
-import { Avatar, Button, Descriptions, Space, Spin, Table, Tabs, Tag, Typography } from 'antd'
+import { Avatar, Button, Card, Descriptions, Result, Space, Spin, Table, Tabs, Tag, Typography } from 'antd'
 import type { ColumnsType } from 'antd/es/table'
 import { ArrowLeftOutlined } from '@ant-design/icons'
 import dayjs from 'dayjs'
-import { useNavigate, useParams } from 'react-router-dom'
+import { useLocation, useNavigate, useParams } from 'react-router-dom'
+import { useBrand } from '@/hooks/useBrand'
+import { useMachineTypes } from '@/hooks/useMachineTypes'
+import { identityLabel } from './identityLabel'
 import { adminApi, type AdminTrainingRecordRow, type AdminUserDetail } from '@/api/admin'
 
 const { Title, Text } = Typography
@@ -17,17 +20,25 @@ function formatDuration(seconds: number) {
 export default function UserDetail() {
   const { id } = useParams<{ id: string }>()
   const navigate = useNavigate()
+  const location = useLocation()
+  const back = () => navigate({ pathname: '/users', search: location.search })
+  const { app } = useBrand()
+  const { labels } = useMachineTypes()
   const [loading, setLoading] = useState(true)
   const [detail, setDetail] = useState<AdminUserDetail | null>(null)
 
   useEffect(() => {
     if (!id) return
+    let current = true
     setLoading(true)
+    setDetail(null)
     adminApi
-      .userDetail(id)
-      .then(setDetail)
-      .finally(() => setLoading(false))
-  }, [id])
+      .userDetail(id, app)
+      .then(data => { if (current) setDetail(data) })
+      .catch(() => { /* 请求错误已提示 */ })
+      .finally(() => { if (current) setLoading(false) })
+    return () => { current = false }
+  }, [id, app])
 
   if (loading)
     return (
@@ -36,7 +47,7 @@ export default function UserDetail() {
       </div>
     )
 
-  if (!detail) return <Text type="secondary">用户不存在</Text>
+  if (!detail) return <Result title="无法查看该用户" extra={<Button onClick={back}>返回用户列表</Button>} />
 
   const trainingColumns: ColumnsType<AdminTrainingRecordRow> = [
     {
@@ -120,7 +131,7 @@ export default function UserDetail() {
       key: 'machine',
       render: (_, r) => (
         <Space size={6}>
-          <Tag color="blue">{r.machineType}</Tag>
+          <Tag color="blue">{labels[r.machineType] || r.machineType}</Tag>
           <Text type="secondary" style={{ fontSize: 12 }}>
             {r.machineSerialNo || '-'}
           </Text>
@@ -147,7 +158,7 @@ export default function UserDetail() {
 
   return (
     <div>
-      <Button type="text" icon={<ArrowLeftOutlined />} onClick={() => navigate('/users')} style={{ marginBottom: 12 }}>
+      <Button type="text" icon={<ArrowLeftOutlined />} onClick={back} style={{ marginBottom: 12 }}>
         返回用户列表
       </Button>
 
@@ -158,15 +169,15 @@ export default function UserDetail() {
           </Avatar>
           <div>
             <Title level={4} style={{ margin: 0 }}>
-              {detail.nickname}
+              {detail.nickname || '未设置昵称'}
             </Title>
             <Text type="secondary" style={{ fontSize: 12 }}>
-              ID: {detail.id}
+              用户 ID · {detail.id}
             </Text>
           </div>
         </Space>
 
-        <Descriptions size="small" column={3} style={{ marginTop: 20 }}>
+        <Descriptions title="账号资料" size="small" column={{ xs: 1, md: 3 }} style={{ marginTop: 20 }}>
           <Descriptions.Item label="状态">
             <Tag color={detail.status === 'active' ? 'success' : 'default'}>
               {detail.status === 'active' ? '正常' : detail.status}
@@ -178,21 +189,17 @@ export default function UserDetail() {
           <Descriptions.Item label="本周目标">
             {detail.goals.weeklySessions} 次 / {detail.goals.weeklyMinutes} 分钟
           </Descriptions.Item>
-          <Descriptions.Item label="绑定方式" span={3}>
-            {detail.identities.length === 0 ? (
-              <Text type="secondary">-</Text>
-            ) : (
-              <Space size={4} wrap>
-                {detail.identities.map((identity) => (
-                  <Tag key={identity.type}>
-                    {identity.type}: {identity.identifier}
-                  </Tag>
-                ))}
-              </Space>
-            )}
-          </Descriptions.Item>
         </Descriptions>
       </div>
+
+      <Card title="绑定账号" style={{ marginBottom: 20 }}>
+        <Table rowKey={row => row.type + row.identifier} dataSource={detail.identities} size="small"
+          pagination={false} locale={{ emptyText: '暂无绑定账号' }} columns={[
+            { title: '绑定方式', dataIndex: 'type', render: identityLabel },
+            { title: '账号', dataIndex: 'identifier' },
+            { title: '验证时间', dataIndex: 'verifiedAt', render: time => time ? dayjs(time).format('YYYY-MM-DD HH:mm') : '暂无验证记录' },
+          ]} />
+      </Card>
 
       <div style={{ background: '#fff', borderRadius: 12, padding: '0 24px 24px' }}>
         <Tabs
@@ -200,9 +207,10 @@ export default function UserDetail() {
           items={[
             {
               key: 'training',
-              label: `训练记录 (${detail.trainingRecords.length})`,
+              label: app ? app.toUpperCase() + ' 品牌训练（最近 20 条）' : '品牌训练（最近 20 条）',
               children: (
                 <Table<AdminTrainingRecordRow>
+                  scroll={{ x: 620 }}
                   rowKey="id"
                   columns={trainingColumns}
                   dataSource={detail.trainingRecords}
@@ -213,9 +221,10 @@ export default function UserDetail() {
             },
             {
               key: 'registrations',
-              label: `赛事报名 (${detail.registrations.length})`,
+              label: '赛事报名（最近 20 条）',
               children: (
                 <Table
+                  scroll={{ x: 620 }}
                   rowKey="id"
                   columns={registrationColumns}
                   dataSource={detail.registrations}
@@ -226,9 +235,10 @@ export default function UserDetail() {
             },
             {
               key: 'sessions',
-              label: `器械训练 (${detail.sessions.length})`,
+              label: '器械训练（最近 10 条）',
               children: (
                 <Table
+                  scroll={{ x: 620 }}
                   rowKey="id"
                   columns={sessionColumns}
                   dataSource={detail.sessions}

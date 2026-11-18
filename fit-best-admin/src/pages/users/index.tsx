@@ -1,48 +1,44 @@
 import { useEffect, useState } from 'react'
-import { Button, Input, Table, Tag, Typography, message } from 'antd'
+import { Avatar, Button, Input, Space, Table, Tag, Typography, message } from 'antd'
 import type { ColumnsType } from 'antd/es/table'
 import { DownloadOutlined, SearchOutlined } from '@ant-design/icons'
-import { Link } from 'react-router-dom'
+import { Link, useSearchParams } from 'react-router-dom'
 import { adminApi, type AdminUserRow } from '@/api/admin'
 import { exportCsvPages } from '@/utils/exportCsv'
+import { identityLabel } from './identityLabel'
 import { useBrand } from '@/hooks/useBrand'
 
 const { Title, Text } = Typography
 
-const identityColors: Record<string, string> = {
-  phone: 'blue',
-  email: 'green',
-  wechat: 'default',
-}
-
 export default function Users() {
+  const { app, brand } = useBrand()
+  const [params, setParams] = useSearchParams()
+  const appliedKeyword = params.get('q') || ''
+  const [keyword, setKeyword] = useState(appliedKeyword)
+  const page = params.get('brand') === brand ? Math.max(1, Number(params.get('page')) || 1) : 1
+  const pageSize = Number(params.get('size')) || 20
   const [loading, setLoading] = useState(true)
   const [exporting, setExporting] = useState(false)
-  const [keyword, setKeyword] = useState('')
-  const [appliedKeyword, setAppliedKeyword] = useState('')
-  const [page, setPage] = useState(1)
-  const [pageSize, setPageSize] = useState(20)
   const [total, setTotal] = useState(0)
   const [data, setData] = useState<AdminUserRow[]>([])
+  const detailLink = (id: string) => ({ pathname: '/users/' + id, search: params.toString() })
 
-  const fetchList = (nextPage = page, nextSize = pageSize, nextKeyword = appliedKeyword) => {
-    setLoading(true)
-    adminApi
-      .users(nextKeyword.trim() || undefined, undefined, nextPage, nextSize)
-      .then((res) => {
-        setData(res.items)
-        setTotal(res.total)
-        setPage(res.page)
-        setPageSize(res.pageSize)
-        setAppliedKeyword(nextKeyword.trim())
-      })
-      .finally(() => setLoading(false))
+  function search(nextPage: number, size: number, term: string) {
+    const query = new URLSearchParams({ page: String(nextPage), size: String(size), brand })
+    if (term.trim()) query.set('q', term.trim())
+    setParams(query)
   }
 
+  useEffect(() => { setKeyword(appliedKeyword) }, [appliedKeyword])
   useEffect(() => {
-    fetchList(1, pageSize, '')
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [])
+    let current = true
+    setLoading(true)
+    adminApi.users(appliedKeyword || undefined, app, page, pageSize)
+      .then(res => { if (current) { setData(res.items); setTotal(res.total) } })
+      .catch(() => { if (current) { setData([]); setTotal(0) } })
+      .finally(() => { if (current) setLoading(false) })
+    return () => { current = false }
+  }, [appliedKeyword, app, page, pageSize])
 
   const handleExport = async () => {
     setExporting(true)
@@ -51,7 +47,7 @@ export default function Users() {
         message,
         '用户列表',
         ['用户 ID', '昵称', '状态', '绑定方式', '每周训练次数', '每周训练分钟', '注册时间'],
-        (page, pageSize) => adminApi.users(appliedKeyword || undefined, undefined, page, pageSize),
+        (page, pageSize) => adminApi.users(appliedKeyword || undefined, app, page, pageSize),
         (user) => [
           user.id,
           user.nickname,
@@ -72,42 +68,16 @@ export default function Users() {
       title: '用户',
       dataIndex: 'nickname',
       key: 'nickname',
-      render: (text: string, record) => (
-        <div>
-          <Link to={`/users/${record.id}`} style={{ fontWeight: 500 }}>
-            {text}
-          </Link>
-          <div>
-            <Text type="secondary" style={{ fontSize: 12 }}>
-              ID: {record.id.slice(0, 8)}…
-            </Text>
-          </div>
-        </div>
-      ),
+      render: (name: string, row) => <Space>
+        <Avatar src={row.avatar}>{name?.[0]}</Avatar>
+        <Link to={detailLink(row.id)}>{name || '未设置昵称'}</Link>
+      </Space>,
     },
     {
-      title: '绑定方式',
-      dataIndex: 'identities',
-      key: 'identities',
-      render: (identities: AdminUserRow['identities']) => (
-        <div style={{ display: 'flex', gap: 4, flexWrap: 'wrap' }}>
-          {identities.map((it) => (
-            <Tag key={it.type} color={identityColors[it.type] || 'default'} style={{ margin: 0 }}>
-              {it.type === 'phone' ? '📱' : it.type === 'email' ? '✉️' : '💬'} {it.identifier}
-            </Tag>
-          ))}
-        </div>
-      ),
-    },
-    {
-      title: '本周目标',
-      key: 'goals',
-      dataIndex: 'goals',
-      render: (goals: AdminUserRow['goals']) => (
-        <Text style={{ fontSize: 13 }}>
-          {goals.weeklySessions} 次 / {goals.weeklyMinutes} 分钟
-        </Text>
-      ),
+      title: '绑定账号',
+      render: (_, row) => row.identities.length ? <Space orientation="vertical" size={0}>
+        {row.identities.map(it => <span key={it.type + it.identifier}>{identityLabel(it.type)} · {it.identifier}</span>)}
+      </Space> : '暂无绑定',
     },
     {
       title: '注册时间',
@@ -124,6 +94,7 @@ export default function Users() {
         <Tag color={status === 'active' ? 'success' : 'default'}>{status === 'active' ? '正常' : status}</Tag>
       ),
     },
+    { title: '操作', key: 'detail', render: (_, row) => <Link to={detailLink(row.id)}>查看明细</Link> },
   ]
 
   return (
@@ -134,15 +105,17 @@ export default function Users() {
         </Title>
         <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, minWidth: 0 }}>
           <Input
+            aria-label="搜索训练用户"
             allowClear
+            onClear={() => search(1, pageSize, '')}
             prefix={<SearchOutlined style={{ color: '#bfbfbf' }} />}
             placeholder="搜索昵称 / 手机号 / 邮箱"
             style={{ width: 300, maxWidth: '100%' }}
             value={keyword}
             onChange={(e) => setKeyword(e.target.value)}
-            onPressEnter={() => fetchList(1, pageSize, keyword)}
+            onPressEnter={() => search(1, pageSize, keyword)}
           />
-          <Button onClick={() => fetchList(1, pageSize, keyword)}>搜索</Button>
+          <Button onClick={() => search(1, pageSize, keyword)}>搜索</Button>
           <Button icon={<DownloadOutlined />} loading={exporting} onClick={handleExport}>
             导出筛选结果
           </Button>
@@ -161,7 +134,7 @@ export default function Users() {
           total,
           showSizeChanger: true,
           showTotal: (value) => `共 ${value} 条`,
-          onChange: (nextPage, nextSize) => fetchList(nextPage, nextSize),
+          onChange: (nextPage, nextSize) => search(nextSize === pageSize ? nextPage : 1, nextSize, appliedKeyword),
         }}
         style={{ background: '#fff', borderRadius: 12, overflow: 'hidden' }}
       />

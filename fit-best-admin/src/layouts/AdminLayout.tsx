@@ -32,12 +32,13 @@ const menuItems = [
     icon: <ThunderboltOutlined />,
     label: '训练',
     children: [
-      { key: '/training-records', icon: <HeartOutlined />, label: '训练记录' },
+      { key: '/training-records', icon: <HeartOutlined />, label: '品牌训练记录' },
       { key: '/device-sessions', icon: <MobileOutlined />, label: '手环 / 器械会话' },
     ],
   },
-  { key: '/sessions', icon: <AppstoreOutlined />, label: '器械明细' },
-  { key: '/machines', icon: <AppstoreOutlined />, label: '器械' },
+  { key: '/sessions', icon: <AppstoreOutlined aria-hidden="true" />, label: '训练记录' },
+  { key: '/machines', icon: <AppstoreOutlined aria-hidden="true" />, label: '器械' },
+  { key: '/machine-models', icon: <AppstoreOutlined aria-hidden="true" />, label: '器械型号' },
   { key: '/gyms', icon: <ShopOutlined />, label: '门店' },
   { key: '/events', icon: <CalendarOutlined />, label: '赛事' },
   { key: '/audit', icon: <FileTextOutlined />, label: '审计日志' },
@@ -146,7 +147,7 @@ export default function AdminLayout() {
 
         <Menu
           mode="inline"
-          selectedKeys={[stripBase(location.pathname)]}
+          selectedKeys={[stripBase(location.pathname).startsWith('/users/') ? '/users' : stripBase(location.pathname)]}
           items={[...menuItems, ...maintenanceItems]}
           onClick={({ key }) => {
             if (key.startsWith('ext:')) {

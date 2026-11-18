@@ -98,6 +98,7 @@ public class AdminController {
         @NotBlank(message = "请填写门店名称") @Size(max = 100) String name,
         @NotBlank(message = "请填写门店编码") @Size(max = 50) String code,
         @Size(max = 300) String address,
+        @Size(max = 6) String districtCode,
         @Size(max = 50) String timezone) {
     }
 
@@ -105,6 +106,7 @@ public class AdminController {
         @Size(min = 1, max = 100) String name,
         @Size(min = 1, max = 50) String code,
         @Size(max = 300) String address,
+        @Size(max = 6) String districtCode,
         @Size(max = 50) String timezone,
         @Pattern(regexp = "active|closed|maintenance") String status) {
     }
@@ -209,6 +211,14 @@ public class AdminController {
             body.brand(), body.specs());
     }
 
+    public record ModelDetails(@NotBlank @Size(max = 100) String model, @Size(max = 50) String brand) {}
+
+    @PatchMapping("machine-models/{id}")
+    public void updateMachineModel(@CurrentAdmin JwtCodec.AdminPayload payload, @PathVariable UUID id,
+                                   @Valid @RequestBody ModelDetails body) {
+        admin.updateMachineModel(payload, id, body.model(), body.brand());
+    }
+
     @PostMapping("tags/generate")
     public Map<String, Object> generateQrTag(@CurrentAdmin JwtCodec.AdminPayload payload,
                                              @RequestParam UUID machineId) {
@@ -270,14 +280,14 @@ public class AdminController {
     @PostMapping("gyms")
     public Map<String, Object> createGym(@CurrentAdmin JwtCodec.AdminPayload payload,
                                          @Valid @RequestBody CreateGymBody body) {
-        return admin.createGym(payload, body.orgId(), body.name(), body.code(), body.address(), body.timezone());
+        return admin.createGym(payload, body.orgId(), body.name(), body.code(), body.address(), body.timezone(), body.districtCode());
     }
 
     @PatchMapping("gyms/{id}")
     public Map<String, Object> updateGym(@CurrentAdmin JwtCodec.AdminPayload payload,
                                          @PathVariable UUID id,
                                          @Valid @RequestBody UpdateGymBody body) {
-        return admin.updateGym(payload, id, body.name(), body.code(), body.address(), body.timezone(), body.status());
+        return admin.updateGym(payload, id, body.name(), body.code(), body.address(), body.timezone(), body.status(), body.districtCode());
     }
 
     @DeleteMapping("gyms/{id}")

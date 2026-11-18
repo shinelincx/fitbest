@@ -48,7 +48,7 @@ public class MachinesService {
             String name = (model.getBrand() != null ? model.getBrand() + " " : "") + model.getModel();
             return new MachineView(machine.getId().toString(), model.getType().name(), model.getModel(),
                 model.getBrand(), name, machine.getSerialNo(), machine.getStatus().name(),
-                machine.getGymId().toString(), gymName);
+                java.util.Objects.toString(machine.getGymId(), null), gymName);
         }
     }
 
@@ -117,7 +117,7 @@ public class MachinesService {
         }
 
         MachineModel model = models.findById(machine.getModelId()).orElseThrow();
-        String gymName = gyms.findById(machine.getGymId()).map(Gym::getName).orElse(null);
+        String gymName = machine.getGymId() == null ? null : gyms.findById(machine.getGymId()).map(Gym::getName).orElse(null);
         MachineView view = MachineView.of(machine, model, gymName);
         Map<String, Object> out = new LinkedHashMap<String, Object>();
         out.put("id", view.id());
