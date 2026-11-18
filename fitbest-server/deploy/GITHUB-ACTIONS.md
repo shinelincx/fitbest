@@ -18,6 +18,8 @@ CI 在 main 的提交通过测试并发布镜像后，可通过 SSH 部署到已
 
 首次部署前，将服务器现有的 `/opt/fitbest/server/.env` 完整复制到 `FITBEST_PRODUCTION_ENV`，包括所有可选业务参数；部署会逐字节核对该文件，避免首次迁移时覆盖现有配置。请使用安全渠道，勿把内容提交到仓库或粘贴到公开日志。配置文件为 Docker Compose 的 `.env` 格式，含特殊字符的值应按 Compose 规则引用。当前工作流拉取公开的 GHCR 镜像；使用私有镜像时需为部署任务配置包读取权限和 GHCR 登录。
 
-服务器需要 Docker Compose、curl、tar 和 Bash；部署账户需要 Docker 权限。确认服务器的现有 Compose 项目名（可用 `docker compose ls` 查看），设置对应变量，检查 `/opt/fitbest/server/.env` 和持久化卷已备份，再启用部署。部署会要求已有的 `${DEPLOY_COMPOSE_PROJECT}_pg_data` 和 `${DEPLOY_COMPOSE_PROJECT}_redis_data` 卷存在。工作流通过 SSH 传输发布镜像，并通过固定主机公钥验证 SSH；不接受自动信任的新主机公钥。
+服务器需要 Docker Compose、Python 3.6 或更新版本、curl、tar 和 Bash。部署账户需要 Docker 权限。确认服务器的现有 Compose 项目名（可用 `docker compose ls` 查看），设置对应变量，检查 `/opt/fitbest/server/.env` 和持久化卷已备份，再启用部署。部署会要求已有的 `${DEPLOY_COMPOSE_PROJECT}_pg_data` 和 `${DEPLOY_COMPOSE_PROJECT}_redis_data` 卷存在。SSH 使用固定的主机公钥，传输部署脚本、Compose 配置和生产环境文件。
+
+发布任务把两张 GHCR 镜像的 SHA-256 摘要传给部署任务。生产主机通过仅本机可访问的临时中转服务拉取镜像。Docker 复用已有层，仅缺失层从 GHCR 下载，超过 2 MiB 的镜像层并行分段拉取。中转服务在 Docker 接收内容前校验完整镜像层的摘要和长度，完成后自动退出并清理临时下载。日志中的 `Already exists` 代表复用镜像层，`Fetched` 会记录实际下载的字节和耗时。校验或拉取失败时，现有容器继续运行，部署任务失败。
 
 每次部署使用独立目录保存 Compose 文件和权限为 600 的生产配置，并在服务健康及页面检查通过后更新 `.fitbest-current`。失败会标记工作流失败，但不会自动回滚已启动的容器或数据库迁移；排查前请检查服务器的运行状态。历史发布目录含敏感配置，应限制目录访问。更改 `POSTGRES_PASSWORD` 需要先单独迁移数据库密码；工作流会拒绝直接修改该参数。

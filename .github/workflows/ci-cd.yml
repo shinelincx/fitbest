@@ -92,6 +92,9 @@ jobs:
     permissions:
       contents: read
       packages: write
+    outputs:
+      server_digest: ${{ steps.push.outputs.server_digest }}
+      web_digest: ${{ steps.push.outputs.web_digest }}
     env:
       FITBEST_IMAGE_NAMESPACE: ghcr.io/${{ github.repository }}
       FITBEST_RELEASE_TAG: ${{ github.ref_type == 'tag' && github.ref_name || format('sha-{0}', github.sha) }}
@@ -127,12 +130,17 @@ jobs:
             curl --fail --silent --show-error "http://127.0.0.1:18080/$path" > /dev/null
           done
       - name: Push images to GHCR
+        id: push
         env:
           GHCR_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           printf '%s' "$GHCR_TOKEN" | docker login ghcr.io -u "$GITHUB_ACTOR" --password-stdin
-          docker push "${FITBEST_IMAGE_NAMESPACE}-server:${FITBEST_RELEASE_TAG}"
-          docker push "${FITBEST_IMAGE_NAMESPACE}-web:${FITBEST_RELEASE_TAG}"
+          for image in server web; do
+            digest=$(docker push "${FITBEST_IMAGE_NAMESPACE}-$image:${FITBEST_RELEASE_TAG}" |
+              tee /dev/stderr | awk '$2 == "digest:" { digest = $3 } END { print digest }')
+            [[ $digest =~ ^sha256:[a-f0-9]{64}$ ]]
+            printf '%s_digest=%s\n' "$image" "$digest" >> "$GITHUB_OUTPUT"
+          done
 
   deploy:
     name: Deploy production
@@ -151,9 +159,11 @@ jobs:
       FITBEST_PRODUCTION_ENV: ${{ secrets.FITBEST_PRODUCTION_ENV }}
       FITBEST_IMAGE_NAMESPACE: ghcr.io/${{ github.repository }}
       FITBEST_RELEASE_TAG: sha-${{ github.sha }}
+      FITBEST_SERVER_DIGEST: ${{ needs.publish.outputs.server_digest }}
+      FITBEST_WEB_DIGEST: ${{ needs.publish.outputs.web_digest }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
-      - name: Transfer release and deploy
+      - name: Pull verified release and deploy
         run: bash fitbest-server/deploy/github-actions-deploy.sh

@@ -29,6 +29,12 @@ if [[ -L $path/.fitbest-current ]]; then
     exit 1
   fi
 fi
+if (( $# == 9 )); then
+  python3 "$release/pull-ghcr-images.py" "$namespace" "$tag" "$8" "$9"
+elif (( $# != 7 )); then
+  echo 'Both published image digests are required.' >&2
+  exit 1
+fi
 docker image inspect "${namespace}-server:${tag}" "${namespace}-web:${tag}" > /dev/null
 "${compose[@]}" up --no-build --pull never --wait --wait-timeout 180
 host_address=$("${compose[@]}" port fitbest-server 8080 | head -n 1)
