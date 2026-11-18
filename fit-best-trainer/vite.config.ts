@@ -11,6 +11,7 @@ export default defineConfig(({ mode }) => {
   const env = loadEnv(mode, process.cwd(), '')
   const isHD = env.VITE_BUILD === 'hd'
   const isNative = env.VITE_NATIVE === 'true'
+  const offlineEntry = 'index.html?fitbest-offline=1'
 
   return {
     base: './',
@@ -55,22 +56,22 @@ export default defineConfig(({ mode }) => {
         },
         workbox: {
           globPatterns: ['**/*.{js,css,html,svg,png,ico,woff2}'],
+          globIgnores: ['sw-navigation-upgrade.js'],
+          importScripts: ['sw-navigation-upgrade.js'],
+          // 避免预缓存先匹配 / 或 /index.html，离线时再读取配套的 HTML。
+          modifyURLPrefix: { 'index.html': offlineEntry },
           navigateFallback: null,
-          cleanupOutdatedCaches: true,
           clientsClaim: true,
-          // HD 版用独立缓存命名空间，避免与手机版 SW 冲突
-          cacheId: isHD ? 'fitbest-hd' : 'fitbest',
+          // 旧版的带指纹资源留给仍在运行的训练窗口。
+          cacheId: isHD ? 'fitbest-hd-navigation' : 'fitbest-navigation',
           runtimeCaching: [
             {
               urlPattern: ({ request, url }: { request: Request; url: URL }) =>
                 request.mode === 'navigate' && url.origin === self.location.origin
                 && [new URL(self.registration.scope).pathname, new URL('index.html', self.registration.scope).pathname].includes(url.pathname),
-              handler: 'NetworkFirst',
+              handler: 'NetworkOnly',
               options: {
-                cacheName: isHD ? 'fitbest-hd-pages' : 'fitbest-pages',
-                networkTimeoutSeconds: 3,
-                expiration: { maxEntries: 8, maxAgeSeconds: 86400 },
-                precacheFallback: { fallbackURL: 'index.html' },
+                precacheFallback: { fallbackURL: offlineEntry },
               },
             },
           ],
