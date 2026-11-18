@@ -3,6 +3,7 @@ package com.ifitbest.server.module;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import java.math.BigDecimal;
+import java.nio.file.Files;
 import java.nio.file.Path;
 import java.time.LocalDateTime;
 import java.util.HashSet;
@@ -89,7 +90,7 @@ class TrainingSyncPostgresTest {
         Path client = Path.of("..", "fit-best-trainer").toAbsolutePath().normalize();
         ProcessBuilder test = new ProcessBuilder("node", "node_modules/vitest/vitest.mjs", "run",
             "tests/offline-machine-session.test.ts", "-t", "复网后");
-        test.directory(client.toFile()).redirectOutput(ProcessBuilder.Redirect.INHERIT).redirectError(ProcessBuilder.Redirect.INHERIT);
+        test.directory(client.toFile());
         test.environment().put("FITBEST_SYNC_API_URL", "http://127.0.0.1:" + port + "/api/v1");
         test.environment().put("FITBEST_SYNC_ACCESS", token);
         test.environment().put("FITBEST_SYNC_CLIENT_ID", clientId);
@@ -113,7 +114,7 @@ class TrainingSyncPostgresTest {
         Path client = Path.of("..", "fit-best-trainer").toAbsolutePath().normalize();
         ProcessBuilder test = new ProcessBuilder("node", "node_modules/vitest/vitest.mjs", "run",
             "tests/race-training-sync.test.ts", "-t", app + ".*断网训练结束");
-        test.directory(client.toFile()).redirectOutput(ProcessBuilder.Redirect.INHERIT).redirectError(ProcessBuilder.Redirect.INHERIT);
+        test.directory(client.toFile());
         test.environment().put("FITBEST_SYNC_API_URL", "http://127.0.0.1:" + port + "/api/v1");
         test.environment().put("FITBEST_SYNC_ACCESS", token);
         test.environment().put("FITBEST_RACE_SYNC_APP", app);
@@ -157,13 +158,18 @@ class TrainingSyncPostgresTest {
     }
 
     private void runClient(ProcessBuilder test) throws Exception {
-        Process child = test.start();
+        Path output = Files.createTempFile("fitbest-vitest-", ".log");
         try {
-            child.getOutputStream().close();
-            assertThat(child.waitFor(45, TimeUnit.SECONDS)).isTrue();
-            assertThat(child.exitValue()).isZero();
+            Process child = test.redirectErrorStream(true).redirectOutput(output.toFile()).start();
+            try {
+                child.getOutputStream().close();
+                assertThat(child.waitFor(45, TimeUnit.SECONDS)).as("Vitest client finished").isTrue();
+                assertThat(child.exitValue()).as("Vitest output:%n%s", Files.readString(output)).isZero();
+            } finally {
+                if (child.isAlive()) child.destroyForcibly().waitFor(5, TimeUnit.SECONDS);
+            }
         } finally {
-            if (child.isAlive()) child.destroyForcibly();
+            Files.deleteIfExists(output);
         }
     }
 
@@ -553,6 +559,211 @@ class TrainingSyncPostgresTest {
             Map.of("phone", phone, "password", password), Map.class);
         assertThat(response.getStatusCode().is2xxSuccessful()).isTrue();
         return (String) response.getBody().get("token");
+    }
+
+    @Test
+    void platformMaintainsAccountsWithTenantIsolationAndRevokesOldSessions() throws Exception {
+        String path = "/api/v1/admin/system";
+        UUID rootOrg = UUID.randomUUID();
+        String code = "system-" + rootOrg.toString().substring(0, 8);
+        String rootPhone = code + "-root";
+        String password = "Regression password 42";
+        UUID rootId = seedAdmin(rootOrg, code, rootPhone, "super", false, false);
+        UUID tenant = null;
+        try {
+            String root = adminLogin(rootPhone, password);
+            var organization = adminJson(root, HttpMethod.POST, path + "/organizations",
+                Map.of("name", "隔离组织", "code", code + "-tenant", "status", "active"));
+            assertThat(organization.getStatusCode().value()).isEqualTo(200);
+            tenant = UUID.fromString(field(organization, "id"));
+            var gym = adminJson(root, HttpMethod.POST, "/api/v1/admin/gyms",
+                Map.of("orgId", tenant, "name", "指定组织门店", "code", "branch"));
+            assertThat(gym.getStatusCode().value()).isEqualTo(200);
+            String gymId = field(gym, "id");
+            assertThat(field(gym, "orgId")).isEqualTo(tenant.toString());
+
+            var createOrgAdmin = adminJson(root, HttpMethod.POST, path + "/accounts",
+                Map.of("name", "组织管理员", "phone", "13900000041", "orgId", tenant, "role", "org_admin"));
+            assertThat(createOrgAdmin.getStatusCode().value()).isEqualTo(200);
+            assertThat(createOrgAdmin.getHeaders().getCacheControl()).contains("no-store");
+            String setupToken = field(createOrgAdmin, "setupToken");
+            var setup = Map.of("token", setupToken, "password", password);
+            assertThat(adminJson(null, HttpMethod.POST, path + "/setup-password", setup).getStatusCode().value()).isEqualTo(204);
+            assertThat(adminJson(null, HttpMethod.POST, path + "/setup-password", setup).getStatusCode().value()).isEqualTo(400);
+            String orgToken = adminLogin("13900000041", password);
+            assertThat(adminJson(orgToken, HttpMethod.GET, path + "/accounts", null).getBody().toString())
+                .contains("13900000041").doesNotContain(rootPhone, setupToken, password);
+            assertThat(adminJson(orgToken, HttpMethod.POST, path + "/accounts/" + rootId + "/reset-password", null)
+                .getStatusCode().value()).isEqualTo(404);
+            var rejected = Map.of("name", "无权分配", "phone", "13900000042", "orgId", tenant, "role", "super");
+            assertThat(adminJson(orgToken, HttpMethod.POST, path + "/accounts", rejected).getStatusCode().value()).isEqualTo(403);
+
+            var viewerResponse = adminJson(orgToken, HttpMethod.POST, path + "/accounts",
+                Map.of("name", "门店只读", "phone", "13900000042", "orgId", tenant, "role", "viewer", "gymId", gymId));
+            assertThat(viewerResponse.getStatusCode().value()).isEqualTo(200);
+            String viewerId = ((Map<?, ?>) ((Map<?, ?>) viewerResponse.getBody()).get("account")).get("id").toString();
+            String viewerSetup = field(viewerResponse, "setupToken");
+            assertThat(adminJson(null, HttpMethod.POST, path + "/setup-password",
+                Map.of("token", viewerSetup, "password", password)).getStatusCode().value()).isEqualTo(204);
+            String viewerToken = adminLogin("13900000042", password);
+            assertThat(adminJson(viewerToken, HttpMethod.GET, path + "/accounts", null).getStatusCode().value()).isEqualTo(403);
+            assertThat(adminJson(viewerToken, HttpMethod.POST, path + "/my-password",
+                Map.of("oldPassword", password, "password", "Changed password 43")).getStatusCode().value()).isEqualTo(204);
+            assertThat(adminJson(viewerToken, HttpMethod.GET, "/api/v1/admin/me", null).getStatusCode().value()).isEqualTo(401);
+            String currentViewer = adminLogin("13900000042", "Changed password 43");
+            for (String status : List.of("disabled", "active")) {
+                assertThat(adminJson(orgToken, HttpMethod.PUT, path + "/accounts/" + viewerId + "/status",
+                    Map.of("status", status)).getStatusCode().value()).isEqualTo(200);
+            }
+            assertThat(adminJson(currentViewer, HttpMethod.GET, "/api/v1/admin/me", null).getStatusCode().value()).isEqualTo(401);
+            assertThat(adminJson(root, HttpMethod.PUT, path + "/organizations/" + tenant,
+                Map.of("name", "隔离组织", "code", code + "-tenant", "status", "disabled"))
+                .getStatusCode().value()).isEqualTo(409);
+            var scopedAudit = adminJson(orgToken, HttpMethod.GET, "/api/v1/admin/audit-logs?action=account.setup-password", null);
+            assertThat(scopedAudit.getStatusCode().value()).isEqualTo(200);
+            assertThat(scopedAudit.getBody().toString()).contains("account.setup-password", viewerId)
+                .doesNotContain(viewerSetup, setupToken, password);
+
+            UUID secondSuper = UUID.randomUUID();
+            jdbc.update("""
+                insert into admin_users (id, org_id, name, phone, password_hash, role)
+                select ?, org_id, '第二个管理员', ?, password_hash, 'super' from admin_users where id = ?
+                """, secondSuper, code + "-second", rootId);
+            String second = adminLogin(code + "-second", password);
+            Map<String, String> disable = Map.of("status", "disabled");
+            var firstRequest = CompletableFuture.supplyAsync(() -> adminJson(root, HttpMethod.PUT,
+                path + "/accounts/" + secondSuper + "/status", disable).getStatusCode().value());
+            var secondRequest = CompletableFuture.supplyAsync(() -> adminJson(second, HttpMethod.PUT,
+                path + "/accounts/" + rootId + "/status", disable).getStatusCode().value());
+            assertThat(List.of(firstRequest.get(10, TimeUnit.SECONDS), secondRequest.get(10, TimeUnit.SECONDS)))
+                .containsExactlyInAnyOrder(200, 401);
+        } finally {
+            if (tenant != null) removeAdminOrg(tenant);
+            removeAdminOrg(rootOrg);
+        }
+    }
+
+    @Test
+    void machineDictionaryControlsNewModelsAndConfiguredGymTimezone() {
+        var org = UUID.randomUUID();
+        String code = "catalog-" + org.toString().substring(0, 8);
+        seedAdmin(org, code, code, "super", false, false);
+        String root = adminLogin(code, "Regression password 42");
+        String path = "/api/v1/admin/system";
+        try {
+            var dictionary = adminJson(root, HttpMethod.GET, path + "/dictionary/machine-types", null);
+            assertThat((List<?>) dictionary.getBody()).hasSize(10);
+            assertThat(adminJson(root, HttpMethod.POST, "/api/v1/admin/machine-models",
+                Map.of("type", "spin", "model", "保留的旧型号")).getStatusCode().value()).isEqualTo(200);
+            assertThat(adminJson(root, HttpMethod.PUT, path + "/dictionary/machine-types/spin",
+                Map.of("label", "动感单车测试", "sortOrder", 1, "selectable", false)).getStatusCode().value()).isEqualTo(204);
+            assertThat(adminJson(root, HttpMethod.POST, "/api/v1/admin/machine-models",
+                Map.of("type", "spin", "model", "已停用的新型号")).getStatusCode().value()).isEqualTo(400);
+            assertThat(adminJson(root, HttpMethod.GET, "/api/v1/admin/machine-models", null).getBody().toString())
+                .contains("保留的旧型号", "spin");
+            assertThat(adminJson(root, HttpMethod.PUT, path + "/settings", Map.of("defaultGymTimezone", "Asia/Singapore"))
+                .getStatusCode().value()).isEqualTo(200);
+            assertThat(field(adminJson(root, HttpMethod.POST, "/api/v1/admin/gyms",
+                Map.of("name", "默认时区门店", "code", "time")), "timezone")).isEqualTo("Asia/Singapore");
+        } finally {
+            jdbc.update("update machine_type_dictionary set label = ?, sort_order = 70, selectable = true where code = 'spin'", "动感单车");
+            jdbc.update("update admin_business_settings set default_gym_timezone = 'Asia/Shanghai'");
+            removeAdminOrg(org);
+        }
+    }
+
+    @Test
+    @EnabledIfEnvironmentVariable(named = "FITBEST_SYNC_WEB_ROOT", matches = ".+")
+    void websiteDraftPreviewPublicationAndRollbackUseOneAuthorizedPublisher() {
+        UUID org = UUID.randomUUID();
+        String code = "site-" + org.toString().substring(0, 8);
+        UUID editorId = seedAdmin(org, code, code + "-editor", "ops", true, false);
+        UUID publisherId = UUID.randomUUID();
+        jdbc.update("""
+            insert into admin_users (id, org_id, name, phone, password_hash, role, site_publisher)
+            select ?, org_id, '发布员', ?, password_hash, 'ops', true from admin_users where id = ?
+            """, publisherId, code + "-publisher", editorId);
+        String path = "/api/v1/admin/system/website";
+        String editor = adminLogin(code + "-editor", "Regression password 42");
+        String publisher = adminLogin(code + "-publisher", "Regression password 42");
+        var original = http.getForEntity("/fitbestwebsite/", String.class);
+        assertThat(original.getStatusCode().value()).isEqualTo(200);
+        assertThat(original.getHeaders().getCacheControl()).contains("no-cache");
+        assertThat(original.getHeaders().getETag()).isNotBlank();
+        Map<?, ?> state = (Map<?, ?>) adminJson(editor, HttpMethod.GET, path, null).getBody();
+        Map<?, ?> draft = (Map<?, ?>) state.get("draft");
+        long originalVersion = ((Number) ((Map<?, ?>) ((List<?>) state.get("versions")).get(0)).get("version")).longValue();
+        long revision = ((Number) draft.get("revision")).longValue();
+        @SuppressWarnings("unchecked")
+        Map<String, Object> content = new java.util.LinkedHashMap<>((Map<String, Object>) draft.get("content"));
+        String originalTitle = (String) content.get("seoTitle");
+        String headline = "官网发布回归 <新标题>";
+        try {
+            content.put("seoTitle", headline);
+            assertThat(adminJson(null, HttpMethod.GET, path, null).getStatusCode().value()).isEqualTo(401);
+            assertThat(adminJson(editor, HttpMethod.PUT, path + "/draft", Map.of("revision", revision, "content", content))
+                .getStatusCode().value()).isEqualTo(200);
+            assertThat(adminJson(editor, HttpMethod.PUT, path + "/draft", Map.of("revision", revision, "content", content))
+                .getStatusCode().value()).isEqualTo(409);
+            var preview = adminJson(editor, HttpMethod.POST, path + "/preview", content);
+            assertThat(preview.getHeaders().getCacheControl()).isEqualTo("no-store");
+            assertThat(field(preview, "html")).contains("官网发布回归 &lt;新标题&gt;").doesNotContain(headline);
+            assertThat(http.getForEntity("/fitbestwebsite/", String.class).getBody()).contains(originalTitle)
+                .doesNotContain("官网发布回归");
+            assertThat(adminJson(editor, HttpMethod.POST, path + "/publications", Map.of("revision", revision + 1))
+                .getStatusCode().value()).isEqualTo(403);
+            assertThat(adminJson(publisher, HttpMethod.POST, path + "/publications", Map.of("revision", revision + 1))
+                .getStatusCode().value()).isEqualTo(200);
+            HttpHeaders conditional = new HttpHeaders();
+            conditional.setIfNoneMatch(original.getHeaders().getETag());
+            var published = http.exchange("/fitbestwebsite/", HttpMethod.GET, new HttpEntity<>(conditional), String.class);
+            assertThat(published.getStatusCode().value()).isEqualTo(200);
+            assertThat(published.getBody()).contains("官网发布回归 &lt;新标题&gt;");
+            assertThat(published.getHeaders().getETag()).isNotEqualTo(original.getHeaders().getETag());
+            conditional.setIfNoneMatch(published.getHeaders().getETag());
+            assertThat(http.exchange("/fitbestwebsite/", HttpMethod.GET, new HttpEntity<>(conditional), String.class)
+                .getStatusCode().value()).isEqualTo(304);
+            assertThat(adminJson(publisher, HttpMethod.POST, path + "/publications",
+                Map.of("revision", revision + 2, "restoreVersion", originalVersion)).getStatusCode().value()).isEqualTo(200);
+            assertThat(http.getForEntity("/fitbestwebsite/index.html", String.class).getBody()).isEqualTo(original.getBody());
+            content.put("storeApple", "https://example.invalid/incorrect-store");
+            assertThat(adminJson(editor, HttpMethod.POST, path + "/preview", content).getStatusCode().value()).isEqualTo(400);
+        } finally {
+            jdbc.update("delete from website_publications where published_by = ? and restored_from is not null", publisherId);
+            jdbc.update("delete from website_publications where published_by = ?", publisherId);
+            jdbc.update("update website_draft set content = (select content from website_publications where version = ?), revision = ?",
+                originalVersion, revision);
+            removeAdminOrg(org);
+        }
+    }
+
+    private UUID seedAdmin(UUID org, String code, String phone, String role, boolean editor, boolean publisher) {
+        UUID id = UUID.randomUUID();
+        jdbc.update("insert into orgs (id, name, code) values (?, ?, ?)", org, code, code);
+        jdbc.update("""
+            insert into admin_users (id, org_id, name, phone, password_hash, role, site_editor, site_publisher)
+            values (?, ?, ?, ?, ?, cast(? as "AdminRole"), ?, ?)
+            """, id, org, phone, phone, new BCryptPasswordEncoder().encode("Regression password 42"), role, editor, publisher);
+        return id;
+    }
+
+    private void removeAdminOrg(UUID org) {
+        jdbc.update("delete from audit_logs where org_id = ? or admin_id in (select id from admin_users where org_id = ?)", org, org);
+        jdbc.update("delete from machine_models where org_id = ?", org);
+        jdbc.update("delete from admin_users where org_id = ?", org);
+        jdbc.update("delete from gyms where org_id = ?", org);
+        jdbc.update("delete from orgs where id = ?", org);
+    }
+
+    private org.springframework.http.ResponseEntity<Object> adminJson(String token, HttpMethod method, String path, Object body) {
+        HttpHeaders headers = new HttpHeaders();
+        if (token != null) headers.setBearerAuth(token);
+        headers.setContentType(MediaType.APPLICATION_JSON);
+        return http.exchange(path, method, new HttpEntity<>(body, headers), Object.class);
+    }
+
+    private static String field(org.springframework.http.ResponseEntity<Object> response, String key) {
+        return (String) ((Map<?, ?>) response.getBody()).get(key);
     }
 
     private org.springframework.http.ResponseEntity<Object> adminExchange(

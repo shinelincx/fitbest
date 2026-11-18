@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react'
+import { useMachineTypes } from '@/hooks/useMachineTypes'
 import { Card, Col, Row, Statistic, Spin, Empty, Typography } from 'antd'
 import {
   UserOutlined,
@@ -16,15 +17,6 @@ import { useBrand } from '@/hooks/useBrand'
 import { BRAND_META } from '@/utils/brand'
 
 const { Title, Text } = Typography
-
-const TYPE_LABEL: Record<string, string> = {
-  treadmill: '跑步机',
-  rower: '划船机',
-  ski: '滑雪机',
-  bike: '风阻车',
-  sled: '雪橇机',
-  rep: '力量训练',
-}
 
 const TYPE_COLORS: Record<string, string> = {
   treadmill: '#F01808',
@@ -102,6 +94,7 @@ function formatDistance(m: number | null | undefined): string {
 }
 
 export default function Dashboard() {
+  const { labels: machineTypeLabels } = useMachineTypes()
   const { app, brand } = useBrand()
   const [loading, setLoading] = useState(true)
   const [data, setData] = useState<AdminOverview | null>(null)
@@ -135,7 +128,7 @@ export default function Dashboard() {
         itemStyle: { borderRadius: 6, borderColor: '#fff', borderWidth: 2 },
         label: { show: false },
         data: data.byType.map((item) => ({
-          name: TYPE_LABEL[item.type] || item.type,
+          name: machineTypeLabels[item.type] || item.type,
           value: item.sessions,
           itemStyle: { color: TYPE_COLORS[item.type] || '#999' },
         })),

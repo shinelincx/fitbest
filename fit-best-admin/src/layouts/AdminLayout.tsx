@@ -9,6 +9,7 @@ import {
   CalendarOutlined,
   FileTextOutlined,
   LogoutOutlined,
+  LockOutlined,
   UserOutlined,
   HeartOutlined,
   MobileOutlined,
@@ -18,6 +19,7 @@ import { Outlet, useLocation, useNavigate } from 'react-router-dom'
 import { useAdminStore } from '@/store/admin'
 import { stripBase } from '@/router/base'
 import { BRAND_META, type BrandFilter } from '@/utils/brand'
+import { canAccessWebsite, canManageAccounts, isPlatform, roleLabels } from '@/utils/adminPermissions'
 
 const { Sider, Header, Content } = Layout
 const { Text } = Typography
@@ -57,14 +59,6 @@ const EXT_LINKS: Record<string, string> = {
   'ext:btwe': '/btwe/',
 }
 
-const roleLabel: Record<string, string> = {
-  super: '超级管理员',
-  org_admin: '组织管理员',
-  gym_admin: '门店管理员',
-  ops: '运营',
-  viewer: '只读',
-}
-
 export default function AdminLayout() {
   const navigate = useNavigate()
   const location = useLocation()
@@ -81,6 +75,18 @@ export default function AdminLayout() {
   const admin = useAdminStore((s) => s.admin)
   const logout = useAdminStore((s) => s.logout)
   const fetchMe = useAdminStore((s) => s.fetchMe)
+  const maintenanceItems = [
+    ...(canManageAccounts(admin) ? [{
+      key: 'system-management', type: 'group' as const, label: '系统管理',
+      children: [
+        { key: '/system/accounts', label: '管理账号' },
+        { key: '/system/organizations', label: '组织管理' },
+        { key: '/system/roles', label: '角色权限' },
+      ],
+    }] : []),
+    ...(isPlatform(admin) ? [{ key: '/system/catalog', label: '数据字典与配置' }] : []),
+    ...(canAccessWebsite(admin) ? [{ key: '/system/website', label: '官网管理' }] : []),
+  ]
 
   useEffect(() => {
     try {
@@ -141,7 +147,7 @@ export default function AdminLayout() {
         <Menu
           mode="inline"
           selectedKeys={[stripBase(location.pathname)]}
-          items={menuItems}
+          items={[...menuItems, ...maintenanceItems]}
           onClick={({ key }) => {
             if (key.startsWith('ext:')) {
               const url = EXT_LINKS[key]
@@ -195,7 +201,7 @@ export default function AdminLayout() {
           <div style={{ display: 'flex', alignItems: 'center', gap: 16 }}>
             {admin && (
               <Text type="secondary" style={{ fontSize: 13 }}>
-                {roleLabel[admin.role] || admin.role}
+                {roleLabels[admin.role] || admin.role}
                 {admin.orgName && ` · ${admin.orgName}`}
                 {admin.gymName && ` · ${admin.gymName}`}
               </Text>
@@ -205,6 +211,7 @@ export default function AdminLayout() {
                 menu={{
                   items: [
                     { type: 'group', label: admin.name },
+                    { label: '修改密码', icon: <LockOutlined />, key: 'change-password', onClick: () => navigate('/my-password') },
                     { label: '退出登录', icon: <LogoutOutlined />, key: 'logout', onClick: handleLogout },
                   ],
                 }}

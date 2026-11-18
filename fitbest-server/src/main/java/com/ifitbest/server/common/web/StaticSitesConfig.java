@@ -17,7 +17,8 @@ import org.springframework.web.servlet.resource.PathResourceResolver;
  *      · assets/**（Vite 带内容指纹的 js/css/字体）→ immutable 缓存一年
  *      · 未命中路由 → 回退各自 index.html（站点前缀隔离，互不串扰）
  *
- *  - 2 个纯静态站：/fitbestwebsite /console → 整体缓存 7 天
+ *  - 官网资源与模拟器：/fitbestwebsite /console → 静态文件缓存 7 天
+ *    官网首页由 WebsiteController 渲染已发布的内容，使用独立的缓存策略。
  *
  * 资源根目录由 fitbest.web.root 配置（容器内默认 /opt/fitbest/web，宿主机挂载）。
  * 注意：/fit-best/api/ 由 Nginx 反代时优先匹配（^~），不会落入此处的 /fit-best/** 处理。
@@ -34,7 +35,7 @@ public class StaticSitesConfig implements WebMvcConfigurer {
         {"/btwe", "btwe"},
     };
 
-    /** 纯静态站点：无前端路由，无需 fallback */
+    /** 无前端路由的静态资源，无需 fallback */
     private static final String[][] PLAIN_SITES = {
         {"/fitbestwebsite", "fitbestwebsite"},
         {"/console", "console"},

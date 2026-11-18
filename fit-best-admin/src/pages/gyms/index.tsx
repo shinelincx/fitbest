@@ -15,7 +15,10 @@ import {
 import type { ColumnsType } from 'antd/es/table'
 import { EditOutlined, DeleteOutlined, PlusOutlined, ReloadOutlined, EnvironmentOutlined } from '@ant-design/icons'
 import dayjs from 'dayjs'
+import { useSearchParams } from 'react-router-dom'
 import { adminApi } from '@/api/admin'
+import { systemApi, type Organization } from '@/api/system'
+import { useAdminStore } from '@/store/admin'
 
 const { Title, Text } = Typography
 
@@ -39,16 +42,29 @@ interface GymRow {
 }
 
 export default function Gyms() {
+  const actor = useAdminStore(s => s.admin)
+  const [params] = useSearchParams()
+  const selectedOrg = params.get('orgId')
+  const [organizations, setOrganizations] = useState<Organization[]>([])
+  const [defaultTimezone, setDefaultTimezone] = useState('Asia/Shanghai')
   const [list, setList] = useState<GymRow[]>([])
   const [loading, setLoading] = useState(false)
   const [open, setOpen] = useState(false)
   const [editing, setEditing] = useState<GymRow | null>(null)
   const [form] = Form.useForm()
+  const canWrite = actor?.role !== 'viewer'
 
   const refresh = async () => {
     setLoading(true)
     try {
-      setList(await adminApi.gyms())
+      const [gyms, settings, orgs] = await Promise.all([
+        adminApi.gyms(), systemApi.settings(), actor?.role === 'super' ? systemApi.organizations() : [],
+      ])
+      setList(gyms)
+      setDefaultTimezone(settings.defaultGymTimezone)
+      setOrganizations(orgs)
+    } catch {
+      // API 拦截器显示错误。
     } finally {
       setLoading(false)
     }
@@ -61,7 +77,7 @@ export default function Gyms() {
   const openCreate = () => {
     setEditing(null)
     form.resetFields()
-    form.setFieldsValue({ timezone: 'Asia/Shanghai', status: 'active' })
+    form.setFieldsValue({ timezone: defaultTimezone, orgId: selectedOrg ?? actor?.orgId })
     setOpen(true)
   }
 
@@ -85,6 +101,7 @@ export default function Gyms() {
         message.success('门店已更新')
       } else {
         await adminApi.createGym({
+          orgId: values.orgId,
           name: values.name,
           code: values.code,
           address: values.address,
@@ -167,7 +184,7 @@ export default function Gyms() {
       title: '操作',
       key: 'action',
       width: 140,
-      render: (_, r) => (
+      render: (_, r) => canWrite && (
         <Space>
           <Button type="link" size="small" icon={<EditOutlined />} onClick={() => openEdit(r)}>
             编辑
@@ -192,16 +209,16 @@ export default function Gyms() {
           <Button icon={<ReloadOutlined />} onClick={refresh}>
             刷新
           </Button>
-          <Button type="primary" icon={<PlusOutlined />} onClick={openCreate}>
+            {canWrite && <Button type="primary" icon={<PlusOutlined />} onClick={openCreate} disabled={loading}>
             新建门店
-          </Button>
+            </Button>}
         </Space>
       </div>
 
       <Table<GymRow>
         rowKey="id"
         columns={columns}
-        dataSource={list}
+        dataSource={selectedOrg ? list.filter(gym => gym.orgId === selectedOrg) : list}
         loading={loading}
         pagination={{ pageSize: 20 }}
         style={{ background: '#fff', borderRadius: 12, overflow: 'hidden' }}
@@ -213,10 +230,16 @@ export default function Gyms() {
         onCancel={() => setOpen(false)}
         onOk={handleSubmit}
         okText={editing ? '保存' : '创建'}
-        destroyOnClose
+        forceRender
         width={520}
       >
         <Form form={form} layout="vertical" preserve={false}>
+          {!editing && actor?.role === 'super' && (
+            <Form.Item label="所属组织" name="orgId" rules={[{ required: true }]}>
+              <Select options={organizations.filter(org => org.status === 'active')
+                .map(org => ({ value: org.id, label: org.name }))} />
+            </Form.Item>
+          )}
           <div style={{ display: 'flex', gap: 12 }}>
             <Form.Item label="门店名称" name="name" rules={[{ required: true, message: '请填写名称' }]} style={{ flex: 1 }}>
               <Input placeholder="上海旗舰店" />
@@ -229,22 +252,14 @@ export default function Gyms() {
             <Input placeholder="上海市静安区..." />
           </Form.Item>
           <div style={{ display: 'flex', gap: 16 }}>
-            <Form.Item label="时区" name="timezone" initialValue="Asia/Shanghai" style={{ width: 200 }}>
-              <Select
-                options={[
-                  { value: 'Asia/Shanghai', label: 'Asia/Shanghai (UTC+8)' },
-                  { value: 'Asia/Tokyo', label: 'Asia/Tokyo (UTC+9)' },
-                  { value: 'Asia/Singapore', label: 'Asia/Singapore (UTC+8)' },
-                  { value: 'Europe/London', label: 'Europe/London' },
-                  { value: 'America/New_York', label: 'America/New_York' },
-                ]}
-              />
+            <Form.Item label="时区" name="timezone" style={{ width: 200 }}>
+              <Input placeholder={defaultTimezone} maxLength={80} />
             </Form.Item>
-            <Form.Item label="状态" name="status" initialValue="active" style={{ flex: 1 }}>
+            {editing && <Form.Item label="状态" name="status" style={{ flex: 1 }}>
               <Select
                 options={Object.entries(STATUS_MAP).map(([k, v]) => ({ value: k, label: v.label }))}
               />
-            </Form.Item>
+            </Form.Item>}
           </div>
         </Form>
       </Modal>

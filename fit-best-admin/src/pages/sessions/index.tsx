@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react'
+import { useMachineTypes } from '@/hooks/useMachineTypes'
 import { Button, DatePicker, Form, Input, Table, Tag, Typography, message } from 'antd'
 import type { ColumnsType } from 'antd/es/table'
 import { DownloadOutlined, ReloadOutlined, SearchOutlined } from '@ant-design/icons'
@@ -9,15 +10,6 @@ import { exportCsvPages } from '@/utils/exportCsv'
 const { Title, Text } = Typography
 const { RangePicker } = DatePicker
 
-const TYPE_LABEL: Record<string, string> = {
-  treadmill: '跑步机',
-  rower: '划船机',
-  ski: '滑雪机',
-  bike: '风阻车',
-  sled: '雪橇机',
-  rep: '力量训练',
-}
-
 interface Filters {
   gymId?: string
   machineId?: string
@@ -25,6 +17,7 @@ interface Filters {
 }
 
 export default function Sessions() {
+  const { labels: machineTypeLabels } = useMachineTypes()
   const [loading, setLoading] = useState(false)
   const [exporting, setExporting] = useState(false)
   const [form] = Form.useForm<Filters>()
@@ -76,7 +69,7 @@ export default function Sessions() {
         (page, pageSize) => adminApi.sessions({ ...paramsOf(applied), page, pageSize }),
         (row) => [
           row.userNickname,
-          TYPE_LABEL[row.machineType] || row.machineType,
+          machineTypeLabels[row.machineType] || row.machineType,
           row.machineModel,
           row.machineSerialNo,
           Math.round(row.durationSec / 60),
@@ -108,7 +101,7 @@ export default function Sessions() {
         <div>
           <div>
             <Tag color="blue" style={{ margin: 0 }}>
-              {TYPE_LABEL[r.machineType] || r.machineType}
+              {machineTypeLabels[r.machineType] || r.machineType}
             </Tag>
             <span style={{ marginLeft: 6, fontSize: 13 }}>{r.machineModel}</span>
           </div>

@@ -21,7 +21,7 @@ public class SiteRootController {
         "/hyrox/HD", "/hyrox/HD/",
         "/btwe", "/btwe/",
         "/btwe/HD", "/btwe/HD/",
-        "/fitbestwebsite", "/fitbestwebsite/",
+        "/fitbestwebsite",
         "/console", "/console/",
     })
     public String root(HttpServletRequest request, HttpServletResponse response) {

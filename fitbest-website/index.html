@@ -4,8 +4,8 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
     <meta name="theme-color" content="#f5f6f7" />
-    <meta name="description" content="FITBEST — 让每一台智能器械，都懂你的训练。" />
-    <title>FITBEST · 智能器械训练</title>
+    <meta name="description" content="{{site.seoDescription}}" />
+    <title>{{site.seoTitle}}</title>
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
     <link rel="preconnect" href="https://images.unsplash.com" />
@@ -255,7 +255,7 @@
     <nav>
       <div class="container nav-inner">
         <a href="#top" class="logo">
-          <img src="logo.png" alt="FITBEST" />
+          <img src="/fitbestwebsite/logo.png" alt="FITBEST" />
           FITBEST
         </a>
         <ul class="nav-links" id="navLinks">
@@ -266,7 +266,7 @@
           <li><a href="#download">下载</a></li>
         </ul>
         <div class="nav-actions">
-          <a href="/fitbest/" class="btn btn-ghost">PWA 体验</a>
+          <a href="{{site.webUrl}}" class="btn btn-ghost">PWA 体验</a>
           <a href="#download" class="btn btn-primary">下载 APP</a>
           <button class="hbg" id="hbg"><span></span><span></span><span></span></button>
         </div>
@@ -278,11 +278,11 @@
       <div class="container hero-grid">
         <div class="reveal">
           <div class="eyebrow">FITBEST · 智能器械训练平台</div>
-          <h1>让每一台智能器械<br/>都<em>懂你的训练</em></h1>
-          <p class="hero-sub">从数据采集到 AI 私教，从力量插销到专项赛事 — FITBEST 把有氧、力量、赛事、AI 聚到一起。</p>
+          <h1>{{site.heroHeadline}}<br/>都<em>{{site.heroEmphasis}}</em></h1>
+          <p class="hero-sub">{{site.heroDescription}}</p>
           <div class="hero-ctas">
             <a href="#download" class="btn btn-primary btn-lg">免费下载 APP</a>
-            <a href="/fitbest/" class="btn btn-outline btn-lg">网页版体验</a>
+            <a href="{{site.webUrl}}" class="btn btn-outline btn-lg">网页版体验</a>
           </div>
         </div>
         <div class="hero-visual reveal">
@@ -305,8 +305,8 @@
               </div>
             </div>
           </div>
-          <img class="hero-photo" loading="lazy" alt="跑步机训练"
-               src="https://images.unsplash.com/photo-1534438327276-14e5300c3a48?w=440&auto=format&fit=crop&q=70" />
+          <img class="hero-photo" loading="lazy" alt="{{site.heroImageAlt}}"
+               src="{{site.heroImage}}" />
         </div>
       </div>
     </section>
@@ -350,7 +350,7 @@
       <div class="container">
         <div class="section-head reveal">
           <div class="section-label">三端联动</div>
-          <h2 class="section-title">手机、网页与场馆大屏</h2>
+          <h2 class="section-title">{{site.productTitle}}</h2>
           <p class="section-sub">训练网页版和 HD 版登录后可同步有氧器械记录。游客记录、力量训练记录和智能插销绑定保存在当前设备，力量记录可通过数据管理导出备份并手动导入。</p>
         </div>
         <div class="platforms-grid">
@@ -376,7 +376,7 @@
               <p>面向健身房与工作室的大屏训练界面。</p>
               <ul class="plat-feats">
                 <li>平板 / 大屏专用横屏布局</li>
-                <li><a href="/fitbest-hd/">打开 HD 训练</a></li>
+                <li><a href="{{site.hdUrl}}">打开 HD 训练</a></li>
               </ul>
             </div>
           </div>
@@ -389,7 +389,7 @@
               <p>无需下载。登录后可跨设备查看已同步的有氧器械记录。</p>
               <ul class="plat-feats">
                 <li>在支持 Web Bluetooth 的浏览器中连接兼容器械</li>
-                <li><a href="/fitbest/">打开网页版</a></li>
+                <li><a href="{{site.webUrl}}">打开网页版</a></li>
                 <li>训练报告深度分析</li>
                 <li>一键分享成绩卡</li>
               </ul>
@@ -404,8 +404,8 @@
       <div class="container">
         <div class="section-head reveal">
           <div class="section-label">器械生态</div>
-          <h2 class="section-title">有氧器械与力量训练</h2>
-          <p class="section-sub">连接兼容的 FTMS 有氧器械和智能插销。力量记录与插销绑定保存在当前设备。</p>
+          <h2 class="section-title">{{site.equipmentTitle}}</h2>
+          <p class="section-sub">{{site.equipmentDescription}}</p>
         </div>
 
         <div class="eco-grid">
@@ -478,7 +478,7 @@
       <div class="container">
         <div class="section-head reveal">
           <div class="section-label">赛事训练</div>
-          <h2 class="section-title">选择你的训练项目</h2>
+          <h2 class="section-title">{{site.trainingTitle}}</h2>
           <p class="section-sub">从单项有氧开始，或进入 HYROX、BTWE 专项训练。</p>
         </div>
         <div class="events-grid">
@@ -487,8 +487,8 @@
               <img loading="lazy" alt="跑步机挑战赛" src="https://images.unsplash.com/photo-1552674605-db6ffd4facb5?w=720&auto=format&fit=crop&q=70" />
             </div>
             <div class="ev-body">
-              <h4>跑步机训练</h4>
-              <a href="/fitbest/#/train/treadmill" class="ev-cta">开始跑步机训练 →</a>
+              <h4>{{site.treadmillTitle}}</h4>
+              <a href="{{site.treadmillUrl}}" class="ev-cta">开始训练 →</a>
             </div>
           </div>
           <div class="ev-card reveal">
@@ -496,8 +496,8 @@
               <img loading="lazy" alt="HYROX 赛事" src="https://images.unsplash.com/photo-1571019613454-1cb2f99b2d8b?w=720&auto=format&fit=crop&q=70" />
             </div>
             <div class="ev-body">
-              <h4>HYROX 专项</h4>
-              <a href="/hyrox/#/train" class="ev-cta">进入 HYROX 训练 →</a>
+              <h4>{{site.hyroxTitle}}</h4>
+              <a href="{{site.hyroxUrl}}" class="ev-cta">进入 HYROX 训练 →</a>
             </div>
           </div>
           <div class="ev-card reveal">
@@ -505,8 +505,8 @@
               <img loading="lazy" alt="体能训练" src="https://images.unsplash.com/photo-1574680096145-d05b474e2155?w=720&auto=format&fit=crop&q=70" />
             </div>
             <div class="ev-body">
-              <h4>BTWE 专项</h4>
-              <a href="/btwe/#/train" class="ev-cta">进入 BTWE 训练 →</a>
+              <h4>{{site.btweTitle}}</h4>
+              <a href="{{site.btweUrl}}" class="ev-cta">进入 BTWE 训练 →</a>
             </div>
           </div>
         </div>
@@ -516,12 +516,12 @@
     <!-- CTA -->
     <section class="cta" id="download">
       <div class="container reveal">
-        <h2>让训练从此不一样</h2>
-        <p>下载 FitBest 官方商店版，或直接打开网页版训练。</p>
+        <h2>{{site.downloadTitle}}</h2>
+        <p>{{site.downloadDescription}}</p>
         <div class="cta-actions">
-          <a href="https://apps.apple.com/cn/app/fitbest/id6448613913" class="btn btn-lg btn-white">App Store</a>
-          <a href="https://play.google.com/store/apps/details?id=com.fitbest.www" class="btn btn-lg btn-white">Google Play</a>
-          <a href="/fitbest/" class="btn btn-lg btn-ghost-white">PWA 网页版</a>
+          <a href="{{site.storeApple}}" class="btn btn-lg btn-white">App Store</a>
+          <a href="{{site.storeGoogle}}" class="btn btn-lg btn-white">Google Play</a>
+          <a href="{{site.webUrl}}" class="btn btn-lg btn-ghost-white">PWA 网页版</a>
         </div>
       </div>
     </section>
@@ -532,14 +532,14 @@
         <div class="ft-grid">
           <div class="ft-brand">
             <a href="#top" class="logo">
-              <img src="logo.png" alt="FITBEST" />
+              <img src="/fitbestwebsite/logo.png" alt="FITBEST" />
               FITBEST
             </a>
             <p>让每一台智能器械，都懂你的训练。FTMS + 智能插销 + AI 私教 + 专项赛事，三端联动。</p>
           </div>
-          <div class="ft-col"><h5>产品</h5><ul><li><a href="#download">手机 APP 下载</a></li><li><a href="/fitbest-hd/">HD 大屏版</a></li><li><a href="/fitbest/">PWA 网页版</a></li></ul></div>
+          <div class="ft-col"><h5>产品</h5><ul><li><a href="#download">手机 APP 下载</a></li><li><a href="{{site.hdUrl}}">HD 大屏版</a></li><li><a href="{{site.webUrl}}">PWA 网页版</a></li></ul></div>
           <div class="ft-col"><h5>功能</h5><ul><li><a href="#ecosystem">器械生态</a></li><li><a href="#ai">AI 私教</a></li><li><a href="#events">赛事训练</a></li><li><a href="/fitbest/#/records">训练记录</a></li></ul></div>
-          <div class="ft-col"><h5>关于</h5><ul><li><a href="/fitbest/#/profile/about">关于 FITBEST</a></li><li><a href="mailto:myfitbest2023@gmail.com">联系支持</a></li></ul></div>
+          <div class="ft-col"><h5>关于</h5><ul><li><a href="/fitbest/#/profile/about">关于 FITBEST</a></li><li><a href="mailto:{{site.supportEmail}}">联系支持</a></li></ul></div>
         </div>
         <div class="ft-bottom"><span>© 2026 FITBEST · thinkfit.cn</span><span>Made for every athlete</span></div>
       </div>

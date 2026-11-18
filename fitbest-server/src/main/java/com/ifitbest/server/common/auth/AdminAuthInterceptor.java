@@ -59,17 +59,24 @@ public class AdminAuthInterceptor implements HandlerInterceptor {
             throw BizException.unauthorized("后台登录已过期");
         }
         AdminUser admin = admins.findById(adminId).orElse(null);
-        if (admin == null || !"active".equals(admin.getStatus())
-            || !Objects.equals(admin.getRole(), payload.role())
-            || !Objects.equals(Objects.toString(admin.getOrgId(), null), payload.orgId())
-            || !Objects.equals(Objects.toString(admin.getGymId(), null), payload.gymId())) {
+        if (!matchesSession(admin, payload)) {
             throw BizException.unauthorized("后台登录已过期");
         }
+        AuthedAdmin methodAuth = hm.getMethodAnnotation(AuthedAdmin.class);
         if ("viewer".equals(admin.getRole()) && !("GET".equals(request.getMethod())
-            || "HEAD".equals(request.getMethod()) || "OPTIONS".equals(request.getMethod()))) {
+            || "HEAD".equals(request.getMethod()) || "OPTIONS".equals(request.getMethod()))
+            && (methodAuth == null || !methodAuth.allowViewerWrite())) {
             throw BizException.forbidden("只读账号不能修改数据");
         }
         request.setAttribute(ATTR_ADMIN, payload);
         return true;
+    }
+
+    public static boolean matchesSession(AdminUser admin, JwtCodec.AdminPayload payload) {
+        return admin != null && "active".equals(admin.getStatus())
+            && Objects.equals(admin.getRole(), payload.role())
+            && Objects.equals(Objects.toString(admin.getOrgId(), null), payload.orgId())
+            && Objects.equals(Objects.toString(admin.getGymId(), null), payload.gymId())
+            && admin.getSessionVersion() == payload.version();
     }
 }

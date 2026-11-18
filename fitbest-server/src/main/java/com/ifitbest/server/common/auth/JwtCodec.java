@@ -54,6 +54,7 @@ public class JwtCodec {
         claims.put("role", payload.role());
         claims.put("orgId", payload.orgId());
         claims.put("gymId", payload.gymId());
+        claims.put("ver", payload.version());
         return sign(claims, props.getJwt().getAdminSecret(), 8 * 3600);
     }
 
@@ -105,13 +106,18 @@ public class JwtCodec {
     }
 
     /** 管理端载荷（对应 NestJS AdminPayload） */
-    public record AdminPayload(String aid, String role, String orgId, String gymId) {
+    public record AdminPayload(String aid, String role, String orgId, String gymId, long version) {
+        public AdminPayload(String aid, String role, String orgId, String gymId) {
+            this(aid, role, orgId, gymId, 0);
+        }
+
         public static AdminPayload fromClaims(Map<String, Object> claims) {
             return new AdminPayload(
                 String.valueOf(claims.get("aid")),
                 String.valueOf(claims.get("role")),
                 String.valueOf(claims.get("orgId")),
-                claims.get("gymId") == null ? null : String.valueOf(claims.get("gymId")));
+                claims.get("gymId") == null ? null : String.valueOf(claims.get("gymId")),
+                claims.get("ver") instanceof Number n ? n.longValue() : 0);
         }
     }
 

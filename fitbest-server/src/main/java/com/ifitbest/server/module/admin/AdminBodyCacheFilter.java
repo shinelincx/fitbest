@@ -22,7 +22,9 @@ public class AdminBodyCacheFilter extends OncePerRequestFilter {
     protected boolean shouldNotFilter(HttpServletRequest request) {
         String method = request.getMethod();
         boolean write = "POST".equals(method) || "PUT".equals(method) || "PATCH".equals(method) || "DELETE".equals(method);
-        return !write || !request.getRequestURI().startsWith("/api/v1/admin/");
+        String path = request.getRequestURI();
+        return !write || !path.startsWith("/api/v1/admin/")
+            || path.startsWith("/api/v1/admin/system/") || path.startsWith("/api/v1/admin/auth/");
     }
 
     @Override

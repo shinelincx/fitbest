@@ -36,9 +36,37 @@ class FlywayBaselinePostgresTest {
         String schema = testSchema();
         try {
             prepareLegacy(schema, "5");
+            UUID org = UUID.randomUUID();
+            UUID admin = UUID.randomUUID();
+            try (var connection = DriverManager.getConnection(url, user, password);
+                 var statement = connection.prepareStatement(
+                     "insert into " + schema + ".orgs (id, name, code) values (?, 'Legacy', 'legacy')");
+                 var account = connection.prepareStatement(
+                     "insert into " + schema + ".admin_users (id, org_id, name, phone, password_hash) "
+                         + "values (?, ?, 'Legacy admin', '13900000999', 'legacy-hash')")) {
+                statement.setObject(1, org);
+                statement.executeUpdate();
+                account.setObject(1, admin);
+                account.setObject(2, org);
+                account.executeUpdate();
+            }
             guarded(schema).migrate();
             assertThat(exists(schema, "deleted_session_keys")).isTrue();
-            assertThat(guarded(schema).info().current().getVersion().getVersion()).isEqualTo("9");
+            assertThat(exists(schema, "machine_type_dictionary")).isTrue();
+            assertThat(exists(schema, "website_publications")).isTrue();
+            assertThat(guarded(schema).info().current().getVersion().getVersion()).isEqualTo("12");
+            try (var connection = DriverManager.getConnection(url, user, password);
+                 var statement = connection.prepareStatement(
+                     "select password_hash, session_version, site_editor, site_publisher from " + schema + ".admin_users where id = ?")) {
+                statement.setObject(1, admin);
+                try (var result = statement.executeQuery()) {
+                    assertThat(result.next()).isTrue();
+                    assertThat(result.getString(1)).isEqualTo("legacy-hash");
+                    assertThat(result.getLong(2)).isZero();
+                    assertThat(result.getBoolean(3)).isFalse();
+                    assertThat(result.getBoolean(4)).isFalse();
+                }
+            }
         } finally {
             dropFixture(schema);
         }

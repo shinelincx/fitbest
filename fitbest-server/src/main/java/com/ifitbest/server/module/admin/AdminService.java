@@ -32,6 +32,7 @@ import com.ifitbest.server.common.util.Times;
 import com.ifitbest.server.config.FitbestProperties;
 import com.ifitbest.server.infra.persistence.AuditLog;
 import com.ifitbest.server.infra.persistence.AuditLogRepo;
+import com.ifitbest.server.infra.persistence.AdminUserRepo;
 import com.ifitbest.server.infra.persistence.Device;
 import com.ifitbest.server.infra.persistence.DeviceRepo;
 import com.ifitbest.server.infra.persistence.DeviceSegmentRepo;
@@ -65,6 +66,7 @@ import com.ifitbest.server.infra.persistence.UserGoalRepo;
 import com.ifitbest.server.infra.persistence.UserIdentity;
 import com.ifitbest.server.infra.persistence.UserIdentityRepo;
 import com.ifitbest.server.infra.persistence.UserRepo;
+import com.ifitbest.server.infra.persistence.WriteLocks;
 import com.ifitbest.server.module.event.EventsService;
 import com.ifitbest.server.module.record.RecordsService;
 
@@ -89,6 +91,9 @@ public class AdminService {
     private final DeviceSegmentRepo deviceSegments;
     private final DeviceRepo devices;
     private final FitbestProperties props;
+    private final WriteLocks locks;
+    private final AdminUserRepo admins;
+    private final CatalogService catalog;
 
     public AdminService(UserRepo users, UserIdentityRepo identities, UserGoalRepo goals,
                         SessionRepo sessions, MachineRepo machines, MachineModelRepo machineModels,
@@ -96,7 +101,8 @@ public class AdminService {
                         EventLinkRepo events, EventRegistrationRepo registrations,
                         AuditLogRepo auditLogs, TrainingRecordRepo trainingRecords,
                         DeviceSessionRepo deviceSessions, DeviceSegmentRepo deviceSegments,
-                        DeviceRepo devices, FitbestProperties props) {
+                        DeviceRepo devices, FitbestProperties props, WriteLocks locks,
+                        AdminUserRepo admins, CatalogService catalog) {
         this.users = users;
         this.identities = identities;
         this.goals = goals;
@@ -114,6 +120,9 @@ public class AdminService {
         this.deviceSegments = deviceSegments;
         this.devices = devices;
         this.props = props;
+        this.locks = locks;
+        this.admins = admins;
+        this.catalog = catalog;
     }
 
     // ---------- 租户域（对应 NestJS tenant.ts） ----------
@@ -896,6 +905,7 @@ public class AdminService {
     public Map<String, Object> createMachineModel(JwtCodec.AdminPayload admin, UUID inputOrgId,
                                                   MachineType type, String model, String brand,
                                                   Map<String, Object> specs) {
+        catalog.requireSelectable(type);
         UUID orgId = resolveOrgId(admin, inputOrgId);
         try {
             MachineModel machineModel = new MachineModel();
@@ -1135,7 +1145,9 @@ public class AdminService {
     @Transactional
     public Map<String, Object> createGym(JwtCodec.AdminPayload admin, UUID inputOrgId, String name,
                                          String code, String address, String timezone) {
+        SystemAdminService.lockAccounts(locks);
         UUID orgId = resolveOrgId(admin, inputOrgId);
+        ensureActiveOrg(orgId);
         try {
             Gym gym = new Gym();
             gym.setId(UUID.randomUUID());
@@ -1143,7 +1155,7 @@ public class AdminService {
             gym.setName(name);
             gym.setCode(code);
             gym.setAddress(address);
-            gym.setTimezone(timezone == null || timezone.isBlank() ? "Asia/Shanghai" : timezone);
+            gym.setTimezone(catalog.gymTimezone(timezone));
             gym.setCreatedAt(Times.nowUtc());
             gyms.save(gym);
             String orgName = orgs.findById(orgId).map(Org::getName).orElse("");
@@ -1156,6 +1168,7 @@ public class AdminService {
     @Transactional
     public Map<String, Object> updateGym(JwtCodec.AdminPayload admin, UUID id, String name, String code,
                                          String address, String timezone, String status) {
+        SystemAdminService.lockAccounts(locks);
         Gym gym = gyms.findById(id).filter(g -> inGymScope(admin, g)).orElse(null);
         if (gym == null) {
             throw BizException.notFound("门店不存在");
@@ -1170,9 +1183,10 @@ public class AdminService {
             gym.setAddress(address);
         }
         if (timezone != null) {
-            gym.setTimezone(timezone);
+            gym.setTimezone(catalog.gymTimezone(timezone));
         }
         if (status != null) {
+            if (!"closed".equals(status)) ensureActiveOrg(gym.getOrgId());
             gym.setStatus(status);
         }
         gyms.save(gym);
@@ -1183,6 +1197,7 @@ public class AdminService {
 
     @Transactional
     public Map<String, Object> deleteGym(JwtCodec.AdminPayload admin, UUID id) {
+        SystemAdminService.lockAccounts(locks);
         Gym gym = gyms.findById(id).filter(g -> inGymScope(admin, g)).orElse(null);
         if (gym == null) {
             throw BizException.notFound("门店不存在");
@@ -1191,25 +1206,45 @@ public class AdminService {
         if (machineCount > 0) {
             throw BizException.badRequest("该门店还有 " + machineCount + " 台器械，无法删除");
         }
+        if (admins.existsByGymId(id)) {
+            throw BizException.conflict("请先迁移该门店关联的管理账号");
+        }
         gyms.delete(gym);
         return Map.of("ok", true);
     }
 
+    private void ensureActiveOrg(UUID id) {
+        if (orgs.findById(id).filter(org -> "active".equals(org.getStatus())).isEmpty()) {
+            throw BizException.badRequest("组织不存在或已停用");
+        }
+    }
+
     // ---------- 审计 ----------
 
+    public record AuditFilters(UUID adminId, UUID orgId, String action, LocalDate from, LocalDate to) {}
+
     @Transactional(readOnly = true)
-    public Map<String, Object> auditLogs(JwtCodec.AdminPayload admin, String page, String pageSize) {
+    public Map<String, Object> auditLogs(JwtCodec.AdminPayload admin, String page, String pageSize, AuditFilters filters) {
         int[] paging = pageParams(page, pageSize);
 
         Specification<AuditLog> spec = (root, query, cb) -> {
-            if (isSuper(admin)) {
-                return cb.conjunction();
+            List<Predicate> clauses = new ArrayList<>();
+            if (!isSuper(admin)) {
+                if ("org_admin".equals(admin.role())) {
+                    clauses.add(cb.equal(root.get("orgId"), adminOrgId(admin)));
+                } else {
+                    UUID gymId = adminGymId(admin);
+                    clauses.add(gymId == null ? cb.disjunction() : cb.equal(root.get("gymId"), gymId));
+                }
             }
-            if ("org_admin".equals(admin.role())) {
-                return cb.equal(root.get("orgId"), adminOrgId(admin));
+            if (filters.adminId() != null) clauses.add(cb.equal(root.get("adminId"), filters.adminId()));
+            if (filters.orgId() != null) clauses.add(cb.equal(root.get("orgId"), filters.orgId()));
+            if (filters.action() != null && !filters.action().isBlank()) {
+                clauses.add(cb.equal(root.get("action"), filters.action().trim()));
             }
-            UUID gymId = adminGymId(admin);
-            return gymId == null ? cb.disjunction() : cb.equal(root.get("gymId"), gymId);
+            if (filters.from() != null) clauses.add(cb.greaterThanOrEqualTo(root.get("createdAt"), filters.from().atStartOfDay()));
+            if (filters.to() != null) clauses.add(cb.lessThan(root.get("createdAt"), filters.to().plusDays(1).atStartOfDay()));
+            return cb.and(clauses.toArray(Predicate[]::new));
         };
 
         Page<AuditLog> result = auditLogs.findAll(spec, newestFirst(paging, "createdAt"));

@@ -66,7 +66,9 @@ class AdminTenantScopeTest {
     private final AdminService admin = new AdminService(users, mock(UserIdentityRepo.class), mock(UserGoalRepo.class),
         sessions, mock(MachineRepo.class), mock(MachineModelRepo.class), mock(MachineTagRepo.class), gyms,
         mock(OrgRepo.class), events, registrations, mock(AuditLogRepo.class), records, deviceSessions,
-        mock(DeviceSegmentRepo.class), devices, new FitbestProperties());
+        mock(DeviceSegmentRepo.class), devices, new FitbestProperties(),
+        mock(com.ifitbest.server.infra.persistence.WriteLocks.class),
+        mock(com.ifitbest.server.infra.persistence.AdminUserRepo.class), mock(CatalogService.class));
 
     @Test
     void trainingRecordSearchForUserOutsideGymReturnsAnEmptyPage() {

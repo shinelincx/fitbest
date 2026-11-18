@@ -20,7 +20,7 @@ import com.ifitbest.server.infra.persistence.OrgRepo;
 @Service
 public class AdminAuthService {
 
-    private static final BCryptPasswordEncoder BCRYPT = new BCryptPasswordEncoder();
+    static final BCryptPasswordEncoder BCRYPT = new BCryptPasswordEncoder();
 
     private final AdminUserRepo admins;
     private final OrgRepo orgs;
@@ -48,6 +48,10 @@ public class AdminAuthService {
         out.put("orgName", orgName);
         out.put("gymId", admin.getGymId() == null ? null : admin.getGymId().toString());
         out.put("gymName", gymName);
+        out.put("status", admin.getStatus());
+        out.put("siteEditor", admin.isSiteEditor());
+        out.put("sitePublisher", admin.isSitePublisher());
+        out.put("createdAt", admin.getCreatedAt());
         return out;
     }
 
@@ -62,7 +66,7 @@ public class AdminAuthService {
 
         String token = jwt.signAdmin(new JwtCodec.AdminPayload(
             admin.getId().toString(), admin.getRole(), admin.getOrgId().toString(),
-            admin.getGymId() == null ? null : admin.getGymId().toString()));
+            admin.getGymId() == null ? null : admin.getGymId().toString(), admin.getSessionVersion()));
         return Map.of("token", token, "admin", serialize(admin));
     }
 

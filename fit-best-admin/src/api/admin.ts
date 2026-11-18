@@ -9,6 +9,10 @@ export interface AdminInfo {
   orgName: string | null
   gymId: string | null
   gymName: string | null
+  status?: string
+  siteEditor?: boolean
+  sitePublisher?: boolean
+  createdAt?: string
 }
 
 export interface TokenLogin {
@@ -21,6 +25,14 @@ export interface Paginated<T> {
   total: number
   page: number
   pageSize: number
+}
+
+export interface AuditFilters {
+  adminId?: string
+  orgId?: string
+  action?: string
+  from?: string
+  to?: string
 }
 
 export interface AdminUserRow {
@@ -228,7 +240,7 @@ export const adminApi = {
   createEventLink: (data: Record<string, unknown>) => http.post('/admin/event-links', data),
   updateEventLink: (id: string, data: Record<string, unknown>) => http.patch(`/admin/event-links/${id}`, data),
   deleteEventLink: (id: string) => http.delete(`/admin/event-links/${id}`),
-  auditLogs: (page?: number, pageSize?: number) =>
+  auditLogs: (page?: number, pageSize?: number, filters?: AuditFilters) =>
     http.get<
       Paginated<{
         id: string
@@ -242,7 +254,7 @@ export const adminApi = {
         ip: string | null
         createdAt: string
       }>
-    >('/admin/audit-logs', { params: { page, pageSize } }),
+    >('/admin/audit-logs', { params: { page, pageSize, ...filters } }),
 
   // ---------- Gym management ----------
   gyms: () =>

@@ -45,6 +45,16 @@ public class AdminUser {
     @Column(nullable = false)
     private String status = "active";
 
+    private long sessionVersion;
+
+    private String setupHash;
+
+    private LocalDateTime setupExpiresAt;
+
+    private boolean siteEditor;
+
+    private boolean sitePublisher;
+
     @Column(name = "created_at", nullable = false)
     private LocalDateTime createdAt;
 }

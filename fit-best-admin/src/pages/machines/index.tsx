@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react'
+import { useMachineTypes } from '@/hooks/useMachineTypes'
 import {
   Button,
   Card,
@@ -22,15 +23,6 @@ import { PlusOutlined, QrcodeOutlined, ScanOutlined, ReloadOutlined } from '@ant
 import { adminApi } from '@/api/admin'
 
 const { Title, Text, Paragraph } = Typography
-
-const TYPE_LABEL: Record<string, string> = {
-  treadmill: '跑步机',
-  rower: '划船机',
-  ski: '滑雪机',
-  bike: '风阻车',
-  sled: '雪橇机',
-  rep: '力量训练',
-}
 
 const STATUS_MAP: Record<string, { label: string; color: string }> = {
   active: { label: '正常', color: 'success' },
@@ -65,6 +57,7 @@ interface ModelRow {
 }
 
 export default function Machines() {
+  const { types, labels: machineTypeLabels } = useMachineTypes()
   const [machines, setMachines] = useState<MachineRow[]>([])
   const [models, setModels] = useState<ModelRow[]>([])
   const [loading, setLoading] = useState(false)
@@ -196,7 +189,7 @@ export default function Machines() {
   ]
 
   const modelColumns: ColumnsType<ModelRow> = [
-    { title: '类型', dataIndex: 'type', key: 'type', render: (t: string) => TYPE_LABEL[t] || t },
+    { title: '类型', dataIndex: 'type', key: 'type', render: (t: string) => machineTypeLabels[t] || t },
     { title: '品牌', dataIndex: 'brand', key: 'brand', render: (t: string | null) => t || '-' },
     { title: '型号', dataIndex: 'model', key: 'model', render: (t: string) => <Text strong>{t}</Text> },
     { title: '器械数', dataIndex: 'machineCount', key: 'machineCount', width: 100 },
@@ -259,7 +252,7 @@ export default function Machines() {
             <Select placeholder="选择型号">
               {models.map((m) => (
                 <Select.Option key={m.id} value={m.id}>
-                  {TYPE_LABEL[m.type]} · {m.brand} {m.model}
+                  {machineTypeLabels[m.type] || m.type} · {m.brand} {m.model}
                 </Select.Option>
               ))}
             </Select>
@@ -287,7 +280,7 @@ export default function Machines() {
         <Form form={modelForm} layout="vertical" preserve={false}>
           <Form.Item label="器械类型" name="type" rules={[{ required: true, message: '请选择类型' }]}>
             <Select
-              options={Object.entries(TYPE_LABEL).map(([k, v]) => ({ value: k, label: v }))}
+              options={types.filter(type => type.selectable).map(({ code, label }) => ({ value: code, label }))}
               placeholder="选择器械类型"
             />
           </Form.Item>

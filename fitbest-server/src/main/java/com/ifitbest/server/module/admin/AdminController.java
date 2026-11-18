@@ -291,7 +291,12 @@ public class AdminController {
     @GetMapping("audit-logs")
     public Map<String, Object> auditLogs(@CurrentAdmin JwtCodec.AdminPayload payload,
                                          @RequestParam(required = false) String page,
-                                         @RequestParam(required = false) String pageSize) {
-        return admin.auditLogs(payload, page, pageSize);
+                                         @RequestParam(required = false) String pageSize,
+                                         @RequestParam(required = false) UUID adminId,
+                                         @RequestParam(required = false) UUID orgId,
+                                         @RequestParam(required = false) String action,
+                                         @RequestParam(required = false) java.time.LocalDate from,
+                                         @RequestParam(required = false) java.time.LocalDate to) {
+        return admin.auditLogs(payload, page, pageSize, new AdminService.AuditFilters(adminId, orgId, action, from, to));
     }
 }
