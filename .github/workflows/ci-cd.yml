@@ -68,6 +68,11 @@ jobs:
           npm --prefix fit-best-trainer test
           npm --prefix fit-best-trainer test -- --mode hd tests/pwa-layout.test.tsx
           node fitbest-server/deploy/build-web.mjs "$RUNNER_TEMP/fitbest-web"
+      - name: Test admin password manager integration
+        working-directory: fit-best-admin
+        run: |
+          npx playwright install --with-deps firefox
+          npm test
       - name: Verify server and browser client integration
         working-directory: fitbest-server
         env:

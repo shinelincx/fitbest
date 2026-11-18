@@ -34,7 +34,7 @@ instance.interceptors.response.use(
     const status = error.response?.status
     const data = error.response?.data as { message?: string; code?: number } | undefined
 
-    if (status === 401) {
+    if (status === 401 && error.config?.url !== '/admin/auth/login') {
       useAdminStore.getState().logout()
       const redirect = encodeURIComponent(stripBase(window.location.pathname))
       window.location.href = `${BASENAME}/login?redirect=${redirect}`
