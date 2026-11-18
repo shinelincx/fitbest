@@ -19,11 +19,9 @@ export function ToastProvider({ children }: { children: ReactNode }) {
   return (
     <ToastContext.Provider value={show}>
       {children}
-      {message && (
-        <div className="toast-pop fixed bottom-28 left-1/2 z-[80] -translate-x-1/2 whitespace-nowrap rounded-full border border-border bg-text px-4 py-2 text-sm text-bg shadow-card">
-          {message}
-        </div>
-      )}
+      <div role="status" className="fixed bottom-28 left-1/2 z-[80] w-max max-w-[calc(100%-2rem)] -translate-x-1/2">
+        {message && <div className="toast-pop rounded-full border border-border bg-text px-4 py-2 text-sm text-bg shadow-card">{message}</div>}
+      </div>
     </ToastContext.Provider>
   )
 }

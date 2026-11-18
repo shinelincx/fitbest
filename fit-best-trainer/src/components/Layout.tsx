@@ -1,6 +1,9 @@
 import { useTranslation } from 'react-i18next'
 import { NavLink, Outlet, useLocation } from 'react-router-dom'
 import { Activity, BarChart3, Dumbbell, Home, Radar, User } from 'lucide-react'
+import { Link } from 'react-router-dom'
+import { useAuth } from '../context/AuthContext'
+import { loginReturn } from '../utils/loginReturn'
 
 // 是否 HD 平板版（由 .env.hd 的 VITE_BUILD=hd 决定）
 const IS_HD = import.meta.env.VITE_BUILD === 'hd'
@@ -25,11 +28,13 @@ const HD_BOTTOM_ITEMS = [
 export default function Layout() {
   const { t } = useTranslation()
   const { pathname } = useLocation()
+  const { sessionExpired } = useAuth()
   // 训练页全屏沉浸：隐藏所有导航
   const isTraining = pathname.startsWith('/train') || /^\/pin(\/|$)/.test(pathname)
   const isAuth = pathname.startsWith('/login') || pathname.startsWith('/register')
   const isShare = pathname.startsWith('/s/')
-  const hideNav = isTraining || isAuth || isShare
+  const isProfileForm = pathname === '/profile/edit' || pathname === '/profile/goals'
+  const hideNav = isTraining || isAuth || isShare || isProfileForm
 
   // 容器：HD 版全宽（根节点带 .hd，启用平板双栏样式）；手机版任何宽度都限宽 430px
   const containerCls = IS_HD
@@ -48,8 +53,14 @@ export default function Layout() {
       {/* 手机版顶部安全区 */}
       {!IS_HD && <div className="h-[env(safe-area-inset-top)] shrink-0" />}
 
-      <main className={mainPaddingCls}>
+      <main className={`${mainPaddingCls} ${isProfileForm ? 'scroll-pb-24' : ''}`}>
         <div className={contentWrapCls}>
+          {sessionExpired && !isAuth && !isTraining && !isShare && (
+            <div role="status" className="mx-5 mt-3 rounded-md border border-border bg-surface px-3 py-2 text-[13px]">
+              {t('登录已失效，本机记录和待同步训练已保留。')}{' '}
+              <Link to="/login" state={{ returnTo: loginReturn(pathname) }} className="font-semibold underline">{t('重新登录')}</Link>
+            </div>
+          )}
           <Outlet />
         </div>
       </main>

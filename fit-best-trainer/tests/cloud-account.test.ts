@@ -59,11 +59,19 @@ it('云端资料和目标用原始用户 ID 更新，保留训练归属', async 
   const saved = await updateAccount(user.id, { nickname: edited.nickname, goalSessions: 5 })
 
   expect(transport.mock.calls.at(-2)?.[0]).toMatch(/\/me$/)
-  expectRequest('/me/goals', 'PATCH', { weeklySessions: 5, weeklyMinutes: 60 })
+  expectRequest('/me/goals', 'PATCH', { weeklySessions: 5 })
   expect(saved).toMatchObject({ id: profile.id, nickname: edited.nickname, goalSessions: 5 })
   expect(getSessionUser()).toEqual(saved)
   expect(currentUserId()).toBe(profile.id)
   expect(localStorage.getItem('fitbest:users')).toBeNull()
+})
+
+it('清空显式选中的资料字段，留存其他资料和目标', async () => {
+  const user = await signIn()
+  transport.mockResolvedValueOnce(json({ ...profile, heightCm: null, weightKg: 72 }))
+  const saved = await updateAccount(user.id, { clear: ['heightCm'] })
+  expectRequest('/me', 'PATCH', { clear: ['heightCm'] })
+  expect(saved).toMatchObject({ heightCm: undefined, weightKg: 72, goalSessions: 2, goalMinutes: 60 })
 })
 
 it('云端发码区分登录和绑定，账号可以绑定邮箱、手机号和解绑邮箱', async () => {

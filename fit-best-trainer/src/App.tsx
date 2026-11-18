@@ -1,7 +1,9 @@
-import { Routes, Route, Navigate } from 'react-router-dom'
+import { Routes, Route, Navigate, useLocation } from 'react-router-dom'
+import type { ReactNode } from 'react'
 import Layout from './components/Layout'
 import { ToastProvider } from './components/Toast'
-import { AuthProvider } from './context/AuthContext'
+import { AuthProvider, useAuth } from './context/AuthContext'
+import { loginReturn } from './utils/loginReturn'
 import Home from './pages/Home'
 import Machines from './pages/Machines'
 import MachineTrain from './pages/MachineTrain'
@@ -22,6 +24,13 @@ import Pins from './pages/Pins'
 import Discover from './pages/Discover'
 import { isNative } from './platform/runtime'
 
+function AccountPage({ children }: { children: ReactNode }) {
+  const { user } = useAuth()
+  const { pathname } = useLocation()
+  if (!user) return <Navigate to="/login" replace state={{ returnTo: loginReturn(pathname) }} />
+  return children
+}
+
 export default function App() {
   return (
     <ToastProvider>
@@ -38,15 +47,16 @@ export default function App() {
             <Route path="/pins" element={<Pins />} />
             <Route path="/records" element={<Records />} />
             <Route path="/profile" element={<Profile />} />
-            <Route path="/profile/edit" element={<EditProfile />} />
+            <Route path="/profile/edit" element={<AccountPage><EditProfile /></AccountPage>} />
+            <Route path="/profile/goals" element={<AccountPage><EditProfile goals /></AccountPage>} />
             <Route
               path="/profile/security"
-              element={isNative ? <Navigate to="/profile/settings" replace /> : <Security />}
+              element={isNative ? <Navigate to="/profile/settings" replace /> : <AccountPage><Security /></AccountPage>}
             />
             <Route path="/profile/settings" element={<Settings />} />
             <Route
               path="/profile/identities"
-              element={isNative ? <Navigate to="/profile/settings" replace /> : <Identities />}
+              element={isNative ? <Navigate to="/profile/settings" replace /> : <AccountPage><Identities /></AccountPage>}
             />
             <Route path="/profile/notifications" element={<Notifications />} />
             <Route path="/profile/data" element={<Data />} />

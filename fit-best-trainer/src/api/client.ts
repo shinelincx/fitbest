@@ -15,6 +15,7 @@
 const BASE = (import.meta.env.VITE_API_BASE as string | undefined)?.trim() || '/fit-best/api/v1'
 const ACCESS_KEY = 'fitbest:access'
 const REFRESH_KEY = 'fitbest:refresh'
+export const SESSION_TOKEN_EVENT = 'fitbest:session-token'
 
 export function getAccessToken(): string | null {
   try {
@@ -41,6 +42,7 @@ export function clearTokens() {
   try {
     localStorage.removeItem(ACCESS_KEY)
     localStorage.removeItem(REFRESH_KEY)
+    window.dispatchEvent(new Event(SESSION_TOKEN_EVENT))
   } catch {
     // ignore
   }
@@ -57,6 +59,10 @@ function tokenUserId(token: string | null): string | null {
   }
 }
 
+export function hasAccessFor(userId: string): boolean {
+  return tokenUserId(getAccessToken()) === userId
+}
+
 let pendingRefresh: { refresh: string; result: Promise<string | null> } | undefined
 
 async function doRefresh(access: string, refresh: string): Promise<string | null> {
@@ -67,14 +73,16 @@ async function doRefresh(access: string, refresh: string): Promise<string | null
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ refreshToken: refresh }),
     })
-    if (!res.ok) return null
+    if (res.status === 401 || res.status === 403) return null
+    if (!res.ok) throw new ApiError(res.status, '暂时无法刷新登录，请稍后重试')
     const data = await res.json()
     if (!data?.accessToken || tokenUserId(data.accessToken) !== tokenUserId(access)
       || getAccessToken() !== access || localStorage.getItem(REFRESH_KEY) !== refresh) return null
     setTokens(data.accessToken, data.refreshToken)
     return data.accessToken as string
-  } catch {
-    return null
+  } catch (error) {
+    if (error instanceof ApiError) throw error
+    throw new ApiError(0, '网络异常，登录状态已保留，请稍后重试')
   }
 }
 

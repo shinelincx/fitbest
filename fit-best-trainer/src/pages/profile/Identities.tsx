@@ -56,14 +56,11 @@ export default function Identities() {
     if (sending) return
     setSending(true)
     try {
-      if (binding === 'email') {
-        const c = await sendEmailCode(email, 'bind')
-        toast(c ? t('验证码已发送：{{code}}', { code: c }) : t('验证码已发送，请查收邮件'))
-      } else {
-        const c = await sendSmsCode(phone, 'bind')
-        toast(c ? t('验证码已发送：{{code}}', { code: c }) : t('验证码已发送，请查收短信'))
-      }
-      setLeft(60)
+      const delivery = binding === 'email' ? await sendEmailCode(email, 'bind') : await sendSmsCode(phone, 'bind')
+      toast(delivery.devCode
+        ? t('验证码已发送：{{code}}', { code: delivery.devCode })
+        : t(binding === 'email' ? '验证码已发送，请查收邮件' : '验证码已发送，请查收短信'))
+      setLeft(delivery.cooldown ?? 60)
       setError('')
     } catch (err) {
       setError(err instanceof Error ? err.message : t('发送失败，请重试'))

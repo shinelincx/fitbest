@@ -1,10 +1,11 @@
 import { useEffect, useState, type FormEvent } from 'react'
 import { useTranslation } from 'react-i18next'
-import { Link, useNavigate } from 'react-router-dom'
+import { Link, useLocation, useNavigate } from 'react-router-dom'
 import { ArrowLeft, Eye, EyeOff, Loader2, MessageCircle } from 'lucide-react'
 import { useAuth } from '../context/AuthContext'
 import { useToast } from '../components/Toast'
-import { EMAIL_RE, PHONE_RE, sendEmailCode, sendSmsCode } from '../utils/auth'
+import { EMAIL_RE, PHONE_RE, maskEmail, maskPhone, normalizeEmail, sendEmailCode, sendSmsCode } from '../utils/auth'
+import { loginReturn } from '../utils/loginReturn'
 
 type Tab = 'phone' | 'email' | 'wechat'
 
@@ -21,6 +22,8 @@ function useCountdown() {
 export default function AuthPage({ mode }: { mode: 'login' | 'register' }) {
   const { t } = useTranslation()
   const navigate = useNavigate()
+  const location = useLocation()
+  const returnTo = loginReturn(location.state?.returnTo)
   const toast = useToast()
   const {
     login,
@@ -49,57 +52,90 @@ export default function AuthPage({ mode }: { mode: 'login' | 'register' }) {
 
   const [agreed, setAgreed] = useState(false)
   const [busy, setBusy] = useState(false)
+  const [sending, setSending] = useState(false)
   const [error, setError] = useState('')
+  const [errorField, setErrorField] = useState('')
+  const [sent, setSent] = useState<{ channel: 'phone' | 'email'; target: string; expiresIn?: number }>()
+
+  function showError(message: string, field = '') {
+    setError(message)
+    setErrorField(field)
+    if (field) document.getElementById(field)?.focus()
+  }
+
+  const errorProps = (field: string) => ({
+    id: field,
+    'aria-invalid': Boolean(error && errorField === field),
+    'aria-describedby': error && errorField === field ? 'auth-error' : undefined,
+  })
 
   const inputClass =
     'mt-1.5 w-full rounded-md border border-border bg-surface px-4 py-3 text-sm text-text outline-none transition-colors placeholder:text-text-sub/50 focus:border-text'
 
   async function sendSms(target: string, setLeft: (n: number) => void) {
+    if (sending || busy) return
+    setSending(true)
     try {
-      const code = await sendSmsCode(target)
-      setLeft(60)
+      const { devCode: code, cooldown, expiresIn } = await sendSmsCode(target)
+      setLeft(cooldown ?? 60)
+      if (tab === 'phone') setSent({ channel: 'phone', target, expiresIn })
       toast(code ? t('验证码已发送：{{code}}', { code }) : t('验证码已发送，请查收短信'))
       setError('')
+      if (tab === 'phone') document.getElementById('sms-code')?.focus()
     } catch (err) {
-      setError(err instanceof Error ? err.message : t('发送失败，请重试'))
+      showError(err instanceof Error ? err.message : t('发送失败，请重试'), tab === 'phone' ? 'phone' : '')
+    } finally {
+      setSending(false)
     }
   }
 
   async function sendEmail(target: string) {
+    if (sending || busy) return
+    setSending(true)
     try {
-      const code = await sendEmailCode(target)
-      setEmailLeft(60)
+      const { devCode: code, cooldown, expiresIn } = await sendEmailCode(target)
+      setEmailLeft(cooldown ?? 60)
+      setSent({ channel: 'email', target: normalizeEmail(target), expiresIn })
       toast(code ? t('验证码已发送：{{code}}', { code }) : t('验证码已发送，请查收邮件'))
       setError('')
+      document.getElementById('email-code')?.focus()
     } catch (err) {
-      setError(err instanceof Error ? err.message : t('发送失败，请重试'))
+      showError(err instanceof Error ? err.message : t('发送失败，请重试'), 'email')
+    } finally {
+      setSending(false)
     }
   }
 
   async function handleSubmit(e: FormEvent) {
     e.preventDefault()
-    if (busy) return
+    if (busy || sending) return
     if (!agreed) {
-      setError(t('请先阅读并同意用户协议与隐私政策'))
+      showError(t('请先阅读并同意用户协议与隐私政策'), 'auth-agreement')
       return
     }
     setError('')
     setBusy(true)
+    let field = ''
     try {
       if (tab === 'phone') {
+        field = 'phone'
         if (!PHONE_RE.test(phone.trim())) throw new Error(t('请输入正确的 11 位手机号'))
         if (phoneMode === 'code') {
-          if (!smsCode.trim()) throw new Error(t('请输入验证码'))
+          field = 'sms-code'
+          if (smsCode.length !== 6) throw new Error(t('请输入 6 位验证码'))
           await loginWithSms(phone, smsCode)
           toast(t('登录成功'))
         } else {
+          field = 'password'
           if (password.length < 6) throw new Error(t('密码至少 6 位'))
           await login(phone, password)
           toast(t('登录成功'))
         }
       } else if (tab === 'email') {
+        field = 'email'
         if (!EMAIL_RE.test(email.trim())) throw new Error(t('请输入正确的邮箱地址'))
-        if (!emailCode.trim()) throw new Error(t('请输入验证码'))
+        field = 'email-code'
+        if (emailCode.length !== 6) throw new Error(t('请输入 6 位验证码'))
         await loginWithEmail(email, emailCode)
         toast(t('登录成功'))
       } else if (wechatStep === 'new') {
@@ -108,9 +144,9 @@ export default function AuthPage({ mode }: { mode: 'login' | 'register' }) {
         await loginWithWechatPhone(wxPhone, wxCode)
         toast(t('微信登录成功'))
       }
-      navigate('/profile', { replace: true })
+      navigate(returnTo, { replace: true })
     } catch (err) {
-      setError(err instanceof Error ? err.message : t('操作失败，请重试'))
+      showError(err instanceof Error ? err.message : t('操作失败，请重试'), field)
     } finally {
       setBusy(false)
     }
@@ -123,7 +159,7 @@ export default function AuthPage({ mode }: { mode: 'login' | 'register' }) {
       const account = await loginWithWechat()
       if (account) {
         toast(t('微信登录成功'))
-        navigate('/profile', { replace: true })
+        navigate(returnTo, { replace: true })
       } else {
         setWechatStep('new')
       }
@@ -143,11 +179,10 @@ export default function AuthPage({ mode }: { mode: 'login' | 'register' }) {
   const submitLabel =
     tab === 'wechat'
       ? t('完成注册并登录')
-      : tab === 'phone' && phoneMode === 'password'
-        ? t('登录')
-        : mode === 'register'
-          ? t('注册 / 登录')
-          : t('登录 / 注册')
+      : t('继续')
+  const sentTo = sent?.channel === tab && (tab === 'phone' ? phone === sent.target && phoneMode === 'code' : normalizeEmail(email) === sent.target)
+    ? (tab === 'phone' ? maskPhone(sent.target) : maskEmail(sent.target))
+    : ''
 
   return (
     <div className="px-5 pt-4">
@@ -175,6 +210,8 @@ export default function AuthPage({ mode }: { mode: 'login' | 'register' }) {
           <button
             key={tabItem.key}
             type="button"
+            disabled={busy || sending}
+            aria-pressed={tab === tabItem.key}
             onClick={() => {
               setTab(tabItem.key)
               setError('')
@@ -199,7 +236,9 @@ export default function AuthPage({ mode }: { mode: 'login' | 'register' }) {
                 <button
                   key={m.key}
                   type="button"
-                  onClick={() => setPhoneMode(m.key)}
+                  disabled={busy || sending}
+                  aria-pressed={phoneMode === m.key}
+                  onClick={() => { setPhoneMode(m.key); setError('') }}
                   className={`-mb-px border-b-2 pb-2 text-[14px] ${
                     phoneMode === m.key ? 'border-text font-medium text-text' : 'border-transparent text-text-sub'
                   }`}
@@ -212,8 +251,10 @@ export default function AuthPage({ mode }: { mode: 'login' | 'register' }) {
             <label className="mb-4 block">
               <span className="text-[14px] text-text-sub">{t('手机号')}</span>
               <input
+                {...errorProps('phone')}
                 value={phone}
-                onChange={(e) => setPhone(e.target.value.replace(/\D/g, '').slice(0, 11))}
+                readOnly={busy || sending}
+                onChange={(e) => { setPhone(e.target.value.replace(/\D/g, '').slice(0, 11)); setSmsCode('') }}
                 type="tel"
                 inputMode="numeric"
                 autoComplete="tel"
@@ -227,6 +268,7 @@ export default function AuthPage({ mode }: { mode: 'login' | 'register' }) {
                 <span className="text-[14px] text-text-sub">{t('验证码')}</span>
                 <div className="flex gap-2">
                   <input
+                    {...errorProps('sms-code')}
                     value={smsCode}
                     onChange={(e) => setSmsCode(e.target.value.replace(/\D/g, '').slice(0, 6))}
                     type="tel"
@@ -237,13 +279,13 @@ export default function AuthPage({ mode }: { mode: 'login' | 'register' }) {
                   />
                   <button
                     type="button"
-                    disabled={smsLeft > 0}
+                    disabled={busy || sending || (smsLeft > 0 && sent?.target === phone)}
                     onClick={() => sendSms(phone.trim(), setSmsLeft)}
                     className={`mt-1.5 shrink-0 rounded-md border border-border px-3 text-[14px] font-medium disabled:opacity-50 ${
                       smsLeft > 0 ? 'text-text-sub' : 'bg-surface-2 text-text'
                     }`}
                   >
-                    {smsLeft > 0 ? `${smsLeft}s` : t('获取验证码')}
+                    {smsLeft > 0 && sent?.target === phone ? t('{{count}} 秒后重发', { count: smsLeft }) : t('获取验证码')}
                   </button>
                 </div>
               </label>
@@ -252,6 +294,7 @@ export default function AuthPage({ mode }: { mode: 'login' | 'register' }) {
                 <span className="text-[14px] text-text-sub">{t('密码')}</span>
                 <div className="relative">
                   <input
+                    {...errorProps('password')}
                     value={password}
                     onChange={(e) => setPassword(e.target.value)}
                     type={showPw ? 'text' : 'password'}
@@ -278,8 +321,10 @@ export default function AuthPage({ mode }: { mode: 'login' | 'register' }) {
             <label className="mb-4 block">
               <span className="text-[14px] text-text-sub">{t('邮箱')}</span>
               <input
+                {...errorProps('email')}
                 value={email}
-                onChange={(e) => setEmail(e.target.value)}
+                readOnly={busy || sending}
+                onChange={(e) => { setEmail(e.target.value); setEmailCode('') }}
                 type="email"
                 inputMode="email"
                 autoComplete="email"
@@ -291,6 +336,7 @@ export default function AuthPage({ mode }: { mode: 'login' | 'register' }) {
               <span className="text-[14px] text-text-sub">{t('验证码')}</span>
               <div className="flex gap-2">
                 <input
+                  {...errorProps('email-code')}
                   value={emailCode}
                   onChange={(e) => setEmailCode(e.target.value.replace(/\D/g, '').slice(0, 6))}
                   type="tel"
@@ -301,13 +347,13 @@ export default function AuthPage({ mode }: { mode: 'login' | 'register' }) {
                 />
                 <button
                   type="button"
-                  disabled={emailLeft > 0}
+                  disabled={busy || sending || (emailLeft > 0 && sent?.target === normalizeEmail(email))}
                   onClick={() => sendEmail(email)}
                   className={`mt-1.5 shrink-0 rounded-md border border-border px-3 text-[14px] font-medium disabled:opacity-50 ${
                     emailLeft > 0 ? 'text-text-sub' : 'bg-surface-2 text-text'
                   }`}
                 >
-                  {emailLeft > 0 ? `${emailLeft}s` : t('获取验证码')}
+                  {emailLeft > 0 && sent?.target === normalizeEmail(email) ? t('{{count}} 秒后重发', { count: emailLeft }) : t('获取验证码')}
                 </button>
               </div>
             </label>
@@ -385,10 +431,19 @@ export default function AuthPage({ mode }: { mode: 'login' | 'register' }) {
           </>
         )}
 
-        {error && <p className="mt-3 text-[14px] text-danger">{t(error)}</p>}
+        <div role="status" className="mt-2 text-[13px] text-text-sub">
+          {sentTo && (sent?.expiresIn
+            ? t('已发送至 {{target}}，{{count}} 秒内有效。可编辑上方联系方式。', { target: sentTo, count: sent.expiresIn })
+            : t('已发送至 {{target}}。可编辑上方联系方式。', { target: sentTo }))}
+        </div>
+        {(tab === 'email' || (tab === 'phone' && phoneMode === 'code')) && (
+          <p className="mt-2 text-[13px] text-text-sub">{t('首次验证此联系方式会创建账号。游客训练记录会保留在本机的游客空间。')}</p>
+        )}
+        <div id="auth-error" role="alert" className="mt-3 text-[14px] text-danger">{error && t(error)}</div>
 
         <label className="mt-4 flex items-start gap-2 text-[13px] text-text-sub">
           <input
+            {...errorProps('auth-agreement')}
             type="checkbox"
             checked={agreed}
             onChange={(e) => setAgreed(e.target.checked)}
@@ -409,7 +464,7 @@ export default function AuthPage({ mode }: { mode: 'login' | 'register' }) {
         {(tab !== 'wechat' || wechatStep === 'new') && (
           <button
             type="submit"
-            disabled={busy}
+            disabled={busy || sending}
             className="mt-5 flex w-full items-center justify-center gap-2 rounded-md bg-text py-3.5 text-sm font-bold text-bg transition-transform active:scale-[0.98] disabled:opacity-60"
           >
             {busy && <Loader2 size={16} className="animate-spin" />}

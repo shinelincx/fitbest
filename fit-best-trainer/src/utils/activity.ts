@@ -10,9 +10,10 @@ export interface ActivityEntry {
   date: string
   durationSec: number
   distanceM: number
+  calories?: number
 }
 
-const ACTIVITY_KEY = 'fitbest:activity'
+export const ACTIVITY_KEY = 'fitbest:activity'
 
 export function readActivity(): ActivityEntry[] {
   const list = loadJSON<ActivityEntry[]>(ACTIVITY_KEY, [])

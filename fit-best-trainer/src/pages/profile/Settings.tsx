@@ -4,7 +4,6 @@ import { Bell, Check, ChevronRight, Database, Fingerprint, Info, Languages, Shie
 import { useTranslation } from 'react-i18next'
 import PageHeader from '../../components/PageHeader'
 import Toggle from '../../components/Toggle'
-import { useAuth } from '../../context/AuthContext'
 import { getPrefs, updatePrefs, type Prefs } from '../../utils/prefs'
 import { LANGS, getLangSetting, setLanguage, type LangSetting } from '../../i18n'
 import { isNative } from '../../platform/runtime'
@@ -28,7 +27,6 @@ export default function Settings() {
   const { t } = useTranslation()
   const [prefs, setPrefs] = useState<Prefs>(getPrefs())
   const [lang, setLang] = useState<LangSetting>(getLangSetting())
-  const { user } = useAuth()
 
   function patchPrefs(patch: Partial<Prefs>) {
     setPrefs(updatePrefs(patch))
@@ -46,7 +44,7 @@ export default function Settings() {
 
   return (
     <div className="px-5 pt-5">
-      <PageHeader title={t('设置')} desc={t('通知提醒、账号安全、数据与偏好')} />
+      <PageHeader title={t('设置')} desc={t('首页提醒、账号安全、数据与偏好')} />
 
       <section className="mb-5 divide-y divide-border overflow-hidden rounded-md border border-border bg-surface">
         {!isNative && (
@@ -60,10 +58,10 @@ export default function Settings() {
         <Row
           to="/profile/notifications"
           icon={<Bell size={16} />}
-          label={t('通知提醒')}
-          desc={prefs.reminderEnabled ? t('已开启 · 每天 {{time}}', { time: prefs.reminderTime }) : t('训练提醒未开启')}
+          label={t('首页训练提醒')}
+          desc={prefs.reminderEnabled ? t('本设备 · 每天 {{time}}', { time: prefs.reminderTime }) : t('本设备 · 已关闭')}
         />
-        {user && !isNative && (
+        {!isNative && (
           <Row to="/profile/security" icon={<Shield size={16} />} label={t('账号与安全')} desc={t('修改密码 · 退出登录 · 注销账号')} />
         )}
         <Row to="/profile/data" icon={<Database size={16} />} label={t('数据管理')} desc={t('导出备份 · 导入记录 · 清空')} />
@@ -74,9 +72,10 @@ export default function Settings() {
         <h2 className="mb-2 flex items-center gap-1.5 font-display text-base font-bold">
           <Volume2 size={16} className="text-primary" /> {t('训练偏好')}
         </h2>
+        <p className="mb-2 text-[13px] text-text-sub">{t('语言、提示音和震动设置仅保存在此设备的浏览器。')}</p>
         <div className="space-y-2">
           <Toggle on={prefs.sound} onChange={(v) => patchPrefs({ sound: v })} label={t('提示音')} desc={t('间歇切换与目标达成时播放提示音')} />
-          <Toggle on={prefs.vibration} onChange={(v) => patchPrefs({ vibration: v })} label={t('震动反馈')} desc={t('间歇阶段切换时震动提醒（需系统支持）')} />
+          <Toggle on={prefs.vibration} onChange={(v) => patchPrefs({ vibration: v })} label={t('震动反馈')} desc={isNative || 'vibrate' in navigator ? t('间歇阶段切换时震动提醒（需系统支持）') : t('此浏览器不支持震动反馈')} />
         </div>
       </section>
 
@@ -89,6 +88,7 @@ export default function Settings() {
             <button
               key={opt.code}
               type="button"
+              aria-pressed={lang === opt.code}
               onClick={() => void chooseLang(opt.code)}
               className={`flex items-center justify-between rounded-md border px-3.5 py-3 text-left text-sm transition-colors ${
                 lang === opt.code

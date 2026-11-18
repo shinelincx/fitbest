@@ -1,197 +1,256 @@
-import { useRef, useState, type ChangeEvent } from 'react'
+import { useEffect, useRef, useState, type ChangeEvent, type FormEvent, type ReactNode } from 'react'
 import { useTranslation } from 'react-i18next'
-import { useNavigate, Navigate } from 'react-router-dom'
+import { useNavigate } from 'react-router-dom'
 import { Camera } from 'lucide-react'
 import Avatar from '../../components/Avatar'
 import PageHeader from '../../components/PageHeader'
 import { useToast } from '../../components/Toast'
 import { useAuth } from '../../context/AuthContext'
+import { type Account, type ProfilePatch } from '../../utils/auth'
 import { fileToAvatar } from '../../utils/image'
 
-const inputCls =
-  'mt-1.5 w-full rounded-md border border-border bg-surface px-4 py-3 text-sm outline-none focus:border-text'
+const inputClass =
+  'mt-1.5 w-full rounded-md border border-border bg-surface px-4 py-3 text-base outline-none focus:border-text'
 
-const GENDERS = [
+type FieldError = { message: string; field?: string }
+
+function ProfileForm({ title, description, label, dirty, busy, error, onSubmit, children }: {
+  title: string
+  description: string
+  label: string
+  dirty: boolean
+  busy: boolean
+  error: FieldError | null
+  onSubmit: (event: FormEvent<HTMLFormElement>) => void
+  children: ReactNode
+}) {
+  const { t } = useTranslation()
+  const navigate = useNavigate()
+  const form = useRef<HTMLFormElement>(null)
+
+  useEffect(() => {
+    if (!dirty) return
+    function beforeUnload(event: BeforeUnloadEvent) {
+      event.preventDefault()
+      event.returnValue = true
+    }
+    window.addEventListener('beforeunload', beforeUnload)
+    return () => window.removeEventListener('beforeunload', beforeUnload)
+  }, [dirty])
+
+  useEffect(() => {
+    if (error?.field) form.current?.querySelector<HTMLElement>('#' + error.field)?.focus()
+  }, [error])
+
+  return (
+    <div className="px-5 pt-5">
+      <PageHeader title={title} desc={description} onBack={() => {
+        if (!busy && (!dirty || window.confirm(t('放弃未保存的修改？')))) navigate('/profile', { replace: true })
+      }} />
+      <form ref={form} onSubmit={onSubmit} noValidate aria-busy={busy}>
+        <fieldset disabled={busy} className="min-w-0 space-y-4 pb-4">
+          {children}
+        </fieldset>
+        <div role="alert" id="profile-form-error" className="text-[13px] text-danger">{error?.message}</div>
+        <footer className="sticky bottom-0 bg-bg pt-3 pb-[max(0.5rem,env(safe-area-inset-bottom))]">
+          <button type="submit" disabled={busy || !dirty} className="w-full rounded-md bg-text py-3.5 text-sm font-semibold text-bg disabled:opacity-60">
+            {busy ? t('保存中…') : label}
+          </button>
+        </footer>
+      </form>
+    </div>
+  )
+}
+
+const genderOptions = [
+  { value: '', label: '未设置' },
   { value: 'male', label: '男' },
   { value: 'female', label: '女' },
   { value: 'other', label: '保密' },
 ] as const
 
-export default function EditProfile() {
+const bodyFields = [
+  { id: 'birthYear', label: '出生年份', min: 1900, max: 2100, integer: true },
+  { id: 'heightCm', label: '身高（cm）', min: 50, max: 250, integer: false },
+  { id: 'weightKg', label: '体重（kg）', min: 20, max: 300, integer: false },
+] as const
+
+const goalFields = [
+  { id: 'goalSessions', label: '训练次数', max: 100 },
+  { id: 'goalMinutes', label: '训练时长（分钟）', max: 10000 },
+] as const
+
+function EditDetails({ user }: { user: Account }) {
   const { t } = useTranslation()
-  const { user, updateProfile } = useAuth()
+  const { updateProfile } = useAuth()
   const navigate = useNavigate()
   const toast = useToast()
   const fileRef = useRef<HTMLInputElement>(null)
+  const [avatar, setAvatar] = useState(user.avatar ?? '')
+  const [nickname, setNickname] = useState(user.nickname)
+  const [gender, setGender] = useState<NonNullable<Account['gender']> | ''>(user.gender ?? '')
+  const [body, setBody] = useState({
+    birthYear: String(user.birthYear ?? ''),
+    heightCm: String(user.heightCm ?? ''),
+    weightKg: String(user.weightKg ?? ''),
+  })
+  const [busy, setBusy] = useState(false)
+  const [reading, setReading] = useState(false)
+  const [error, setError] = useState<FieldError | null>(null)
+  const dirty = nickname !== user.nickname || avatar !== (user.avatar ?? '') || gender !== (user.gender ?? '')
+    || bodyFields.some(({ id }) => body[id] !== String(user[id] ?? ''))
 
-  const [avatar, setAvatar] = useState(user?.avatar ?? '')
-  const [nickname, setNickname] = useState(user?.nickname ?? '')
-  const [gender, setGender] = useState<string>(user?.gender ?? '')
-  const [birthYear, setBirthYear] = useState(user?.birthYear ? String(user.birthYear) : '')
-  const [heightCm, setHeightCm] = useState(user?.heightCm ? String(user.heightCm) : '')
-  const [weightKg, setWeightKg] = useState(user?.weightKg ? String(user.weightKg) : '')
-  const [goalSessions, setGoalSessions] = useState(user?.goalSessions ? String(user.goalSessions) : '')
-  const [goalMinutes, setGoalMinutes] = useState(user?.goalMinutes ? String(user.goalMinutes) : '')
-  const [error, setError] = useState('')
-
-  if (!user) return <Navigate to="/login" replace />
-
-  const toNumber = (v: string) => (v.trim() === '' ? undefined : Number(v))
-
-  async function handleFile(e: ChangeEvent<HTMLInputElement>) {
-    const file = e.target.files?.[0]
+  async function handleFile(event: ChangeEvent<HTMLInputElement>) {
+    const file = event.target.files?.[0]
     if (!file) return
+    setReading(true)
     try {
       setAvatar(await fileToAvatar(file))
-      setError('')
+      setError(null)
     } catch (err) {
-      setError(err instanceof Error ? err.message : t('图片处理失败'))
+      setError({ message: err instanceof Error ? err.message : t('图片处理失败') })
     } finally {
-      e.target.value = ''
+      event.target.value = ''
+      setReading(false)
     }
   }
 
-  async function handleSave() {
+  async function save(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault()
+    if (busy || reading || !dirty) return
+    const clear: NonNullable<ProfilePatch['clear']> = []
+    const patch: ProfilePatch = { clear }
     const name = nickname.trim()
-    if (!name) return setError(t('请填写昵称'))
-    if (name.length > 12) return setError(t('昵称最多 12 个字'))
-    const year = toNumber(birthYear)
-    const currentYear = new Date().getFullYear()
-    if (year !== undefined && (year < 1900 || year > currentYear)) return setError(t('请填写正确的出生年份'))
-    const height = toNumber(heightCm)
-    if (height !== undefined && (height < 100 || height > 250)) return setError(t('身高需在 100–250 cm'))
-    const weight = toNumber(weightKg)
-    if (weight !== undefined && (weight < 30 || weight > 250)) return setError(t('体重需在 30–250 kg'))
-    const sessions = toNumber(goalSessions)
-    if (sessions !== undefined && (sessions < 0 || sessions > 21)) return setError(t('周次数需在 0–21'))
-    const minutes = toNumber(goalMinutes)
-    if (minutes !== undefined && (minutes < 0 || minutes > 900)) return setError(t('周时长需在 0–900 分钟'))
-
-    try {
-      await updateProfile({
-        nickname: name,
-        avatar: avatar || undefined,
-        gender: (gender || undefined) as 'male' | 'female' | 'other' | undefined,
-        birthYear: year,
-        heightCm: height,
-        weightKg: weight,
-        goalSessions: sessions,
-        goalMinutes: minutes,
-      })
-    } catch (err) {
-      return setError(err instanceof Error ? err.message : t('保存失败，请重试'))
+    if (name !== user.nickname) {
+      if (!name || name.length > 20) return setError({ field: 'nickname', message: t('昵称长度为 1 至 20 位') })
+      patch.nickname = name
     }
-    toast(t('资料已保存'))
-    navigate('/profile', { replace: true })
+    if (avatar !== (user.avatar ?? '')) {
+      if (avatar) patch.avatar = avatar
+      else clear.push('avatar')
+    }
+    if (gender !== (user.gender ?? '')) {
+      if (gender) patch.gender = gender
+      else clear.push('gender')
+    }
+    for (const { id, label, min, max, integer } of bodyFields) {
+      const raw = body[id].trim()
+      if (raw === String(user[id] ?? '')) continue
+      if (!raw) {
+        clear.push(id)
+        continue
+      }
+      const value = Number(raw)
+      if (!Number.isFinite(value) || value < min || value > max || (integer && !Number.isInteger(value))) {
+        return setError({ field: id, message: t('{{label}}需填写 {{min}}–{{max}} 范围内的数值', { label: t(label), min, max }) })
+      }
+      patch[id] = value
+    }
+    setError(null)
+    setBusy(true)
+    try {
+      await updateProfile(patch)
+      toast(t('资料已保存'))
+      navigate('/profile', { replace: true })
+    } catch (err) {
+      setError({ message: err instanceof Error ? err.message : t('保存失败，请重试') })
+    } finally {
+      setBusy(false)
+    }
   }
 
   return (
-    <div className="px-5 pt-5">
-      <PageHeader title={t('编辑资料')} desc={t('完善头像与身体资料')} />
-
-      <div className="mb-5 flex flex-col items-center">
+    <ProfileForm title={t('编辑资料')} description={t('身体资料选填，用于完善个人档案。')} label={t('保存资料')}
+      dirty={dirty} busy={busy || reading} error={error} onSubmit={save}>
+      <div className="flex flex-col items-center gap-2">
         <Avatar user={{ ...user, avatar }} size={96} />
-        <button
-          type="button"
-          onClick={() => fileRef.current?.click()}
-          className="mt-3 flex items-center gap-1.5 rounded-full border border-border bg-surface px-3 py-1.5 text-[13px] text-text-sub"
-        >
-          <Camera size={14} /> {t('更换头像')}
-        </button>
+        <div className="flex flex-wrap justify-center gap-2">
+          <button type="button" onClick={() => fileRef.current?.click()}
+            className="flex min-h-11 items-center gap-1.5 rounded-full border border-border bg-surface px-3 text-[13px] text-text-sub">
+            <Camera size={14} /> {t('更换头像')}
+          </button>
+          {avatar && <button type="button" onClick={() => setAvatar('')} className="min-h-11 rounded-full border border-border px-3 text-[13px]">{t('移除头像')}</button>}
+        </div>
         <input ref={fileRef} type="file" accept="image/*" onChange={handleFile} className="hidden" />
       </div>
-
-      <div className="space-y-4">
-        <label className="block">
-          <span className="text-[13px] text-text-sub">{t('昵称')}</span>
-          <input value={nickname} onChange={(e) => setNickname(e.target.value)} maxLength={12} className={inputCls} />
+      <label className="block">
+        <span className="text-[13px] text-text-sub">{t('昵称')}</span>
+        <input id="nickname" value={nickname} onChange={(event) => setNickname(event.target.value)} maxLength={20}
+          aria-invalid={error?.field === 'nickname'} aria-describedby={error?.field === 'nickname' ? 'profile-form-error' : undefined} className={inputClass} />
+      </label>
+      <label className="block">
+        <span className="text-[13px] text-text-sub">{t('性别')}</span>
+        <select value={gender} onChange={(event) => setGender(event.target.value as typeof gender)} className={inputClass}>
+          {genderOptions.map(({ value, label }) => <option key={value} value={value}>{t(label)}</option>)}
+        </select>
+      </label>
+      {bodyFields.map(({ id, label, integer }) => (
+        <label key={id} className="block">
+          <span className="text-[13px] text-text-sub">{t(label)}</span>
+          <input id={id} value={body[id]} onChange={(event) => setBody({ ...body, [id]: event.target.value })}
+            inputMode={integer ? 'numeric' : 'decimal'} className={inputClass}
+            aria-invalid={error?.field === id} aria-describedby={error?.field === id ? 'profile-form-error' : undefined} />
         </label>
-
-        <div>
-          <span className="text-[13px] text-text-sub">{t('性别')}</span>
-          <div className="mt-1.5 grid grid-cols-3 gap-1 rounded-md bg-surface-2 p-1">
-            {GENDERS.map((g) => (
-              <button
-                key={g.value}
-                onClick={() => setGender(g.value)}
-                className={`rounded-sm py-2 text-sm ${gender === g.value ? 'bg-text font-semibold text-bg' : 'text-text-sub'}`}
-              >
-                {t(g.label)}
-              </button>
-            ))}
-          </div>
-        </div>
-
-        <div className="grid grid-cols-2 gap-3">
-          <label className="block">
-            <span className="text-[13px] text-text-sub">{t('出生年份')}</span>
-            <input
-              value={birthYear}
-              onChange={(e) => setBirthYear(e.target.value)}
-              inputMode="numeric"
-              placeholder={t('如 1995')}
-              className={inputCls}
-            />
-          </label>
-          <label className="block">
-            <span className="text-[13px] text-text-sub">{t('身高（cm）')}</span>
-            <input
-              value={heightCm}
-              onChange={(e) => setHeightCm(e.target.value)}
-              inputMode="numeric"
-              placeholder={t('如 175')}
-              className={inputCls}
-            />
-          </label>
-        </div>
-
-        <label className="block">
-          <span className="text-[13px] text-text-sub">{t('体重（kg）')}</span>
-          <input
-            value={weightKg}
-            onChange={(e) => setWeightKg(e.target.value)}
-            inputMode="numeric"
-            placeholder={t('如 70')}
-            className={inputCls}
-          />
-        </label>
-      </div>
-
-      <section className="mt-6">
-        <h2 className="text-sm font-semibold">{t('每周目标')}</h2>
-        <p className="mt-1 text-[13px] text-text-sub">{t('留空或填 0 表示暂不设目标')}</p>
-        <div className="mt-3 grid grid-cols-2 gap-3">
-          <label className="block">
-            <span className="text-[13px] text-text-sub">{t('训练次数')}</span>
-            <input
-              value={goalSessions}
-              onChange={(e) => setGoalSessions(e.target.value)}
-              inputMode="numeric"
-              placeholder={t('如 3')}
-              className={inputCls}
-            />
-          </label>
-          <label className="block">
-            <span className="text-[13px] text-text-sub">{t('训练时长（分钟）')}</span>
-            <input
-              value={goalMinutes}
-              onChange={(e) => setGoalMinutes(e.target.value)}
-              inputMode="numeric"
-              placeholder={t('如 150')}
-              className={inputCls}
-            />
-          </label>
-        </div>
-      </section>
-
-      {error && <p className="mt-4 text-[13px] text-danger">{t(error)}</p>}
-
-      <button
-        onClick={handleSave}
-        className="mt-6 w-full rounded-md bg-text py-3.5 text-sm font-semibold text-bg active:scale-[0.99]"
-      >
-        {t('保存资料')}
-      </button>
-    </div>
+      ))}
+    </ProfileForm>
   )
+}
+
+function EditGoals({ user }: { user: Account }) {
+  const { t } = useTranslation()
+  const { updateProfile } = useAuth()
+  const navigate = useNavigate()
+  const toast = useToast()
+  const [draft, setDraft] = useState({
+    goalSessions: String(user.goalSessions || ''),
+    goalMinutes: String(user.goalMinutes || ''),
+  })
+  const [busy, setBusy] = useState(false)
+  const [error, setError] = useState<FieldError | null>(null)
+  const dirty = goalFields.some(({ id }) => draft[id] !== String(user[id] || ''))
+
+  async function save(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault()
+    if (busy || !dirty) return
+    const patch: ProfilePatch = {}
+    for (const { id, label, max } of goalFields) {
+      const value = Number(draft[id].trim())
+      if (value === (user[id] ?? 0)) continue
+      if (!Number.isInteger(value) || value < 0 || value > max) {
+        return setError({ field: id, message: t('{{label}}需填写 0–{{max}} 范围内的整数', { label: t(label), max }) })
+      }
+      patch[id] = value
+    }
+    setError(null)
+    setBusy(true)
+    try {
+      if (Object.keys(patch).length) await updateProfile(patch)
+      toast(t('目标已保存'))
+      navigate('/profile', { replace: true })
+    } catch (err) {
+      setError({ message: err instanceof Error ? err.message : t('保存失败，请重试') })
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  return (
+    <ProfileForm title={t('每周训练目标')} description={t('留空或填 0 表示暂不设目标')} label={t('保存目标')}
+      dirty={dirty} busy={busy} error={error} onSubmit={save}>
+      {goalFields.map(({ id, label }) => (
+        <label key={id} className="block">
+          <span className="text-[13px] text-text-sub">{t(label)}</span>
+          <input id={id} value={draft[id]} onChange={(event) => setDraft({ ...draft, [id]: event.target.value })}
+            inputMode="numeric" className={inputClass}
+            aria-invalid={error?.field === id} aria-describedby={error?.field === id ? 'profile-form-error' : undefined} />
+        </label>
+      ))}
+    </ProfileForm>
+  )
+}
+
+export default function EditProfile({ goals = false }: { goals?: boolean }) {
+  const { user } = useAuth()
+  if (!user) return null
+  return goals ? <EditGoals user={user} key={user.id} /> : <EditDetails user={user} key={user.id} />
 }

@@ -1,5 +1,6 @@
 import { createContext, useContext, useEffect, useState, type ReactNode } from 'react'
 import { flushMachineSessions } from '../api'
+import { hasAccessFor, SESSION_TOKEN_EVENT } from '../api/client'
 import {
   bindEmail as bindEmailApi,
   bindPhone as bindPhoneApi,
@@ -8,6 +9,7 @@ import {
   deleteAccount as deleteAccountApi,
   getLocalGuestAccount,
   getSessionUser,
+  isCloudAccount,
   loginAccount,
   loginWithEmail as loginWithEmailApi,
   loginWithSms as loginWithSmsApi,
@@ -27,6 +29,7 @@ import { isNative } from '../platform/runtime'
 
 interface AuthValue {
   user: Account | null
+  sessionExpired: boolean
   login: (phone: string, password: string) => Promise<void>
   register: (input: { phone: string; password: string; nickname: string }) => Promise<void>
   loginWithSms: (phone: string, code: string) => Promise<void>
@@ -51,9 +54,28 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<Account | null>(() =>
     isNative ? getLocalGuestAccount() : getSessionUser(),
   )
+  const [tokenChange, setTokenChange] = useState(0)
+  const sessionExpired = !isNative && user !== null && isCloudAccount() && !hasAccessFor(user.id)
+
   useEffect(() => {
-    if (user?.id) void flushMachineSessions()
-  }, [user?.id])
+    if (isNative) return
+    const refresh = () => setTokenChange((value) => value + 1)
+    const crossTab = (event: StorageEvent) => {
+      if (event.storageArea !== localStorage || (event.key && !['fitbest:access', 'fitbest:session', 'fitbest:cloud-account'].includes(event.key))) return
+      setUser(getSessionUser())
+      refresh()
+    }
+    window.addEventListener(SESSION_TOKEN_EVENT, refresh)
+    window.addEventListener('storage', crossTab)
+    return () => {
+      window.removeEventListener(SESSION_TOKEN_EVENT, refresh)
+      window.removeEventListener('storage', crossTab)
+    }
+  }, [])
+
+  useEffect(() => {
+    if (user?.id && !sessionExpired) void flushMachineSessions()
+  }, [user?.id, sessionExpired, tokenChange])
 
   async function login(phone: string, password: string) {
     setUser(await loginAccount(phone, password))
@@ -136,6 +158,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     <AuthContext.Provider
       value={{
         user,
+        sessionExpired,
         login,
         register,
         loginWithSms,

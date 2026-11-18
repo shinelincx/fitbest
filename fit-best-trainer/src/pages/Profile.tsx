@@ -1,9 +1,8 @@
-import { useEffect, useState, type ReactNode } from 'react'
+import { useState, type ReactNode } from 'react'
 import { useTranslation } from 'react-i18next'
 import { Link } from 'react-router-dom'
 import {
   ArrowRight,
-  Bell,
   ChevronRight,
   ClipboardList,
   Flame,
@@ -15,15 +14,12 @@ import {
 import Avatar from '../components/Avatar'
 import WeeklyShareSheet from '../components/WeeklyShareSheet'
 import { useAuth } from '../context/AuthContext'
-import { fetchSessions } from '../api'
-import type { MachineSession } from '../types'
+import { useTrainingOverview } from '../hooks/useTrainingOverview'
 import { maskContact } from '../utils/auth'
 import {
   formatDistance,
   formatDuration,
-  isThisWeek,
   personalBests,
-  summarize,
   trainingStreak,
 } from '../utils/stats'
 
@@ -61,19 +57,13 @@ function Row(props: { to: string; icon: ReactNode; label: string; desc: string }
 
 export default function Profile() {
   const { t } = useTranslation()
-  const [sessions, setSessions] = useState<MachineSession[]>([])
   const [weeklyOpen, setWeeklyOpen] = useState(false)
-  const [noticeOpen, setNoticeOpen] = useState(false)
-  const { user } = useAuth()
-
-  useEffect(() => {
-    fetchSessions().then(setSessions)
-  }, [])
-
-  const summary = summarize(sessions)
-  const week = sessions.filter((s) => isThisWeek(s.date))
-  const weekMinutes = Math.round(week.reduce((a, s) => a + s.durationSec, 0) / 60)
-  const streak = trainingStreak(sessions)
+  const { user, sessionExpired } = useAuth()
+  const overview = useTrainingOverview(user?.id ?? null, sessionExpired)
+  const { sessions, lifetime: summary, weekly } = overview
+  const cardioWeek = overview.week.some((item) => item.app === 'cardio')
+  const weekMinutes = Math.round(weekly.durationSec / 60)
+  const streak = trainingStreak(overview.all, overview.time)
   const bests = personalBests(sessions).slice(0, 4)
   const goalSessions = user?.goalSessions ?? 0
   const goalMinutes = user?.goalMinutes ?? 0
@@ -84,22 +74,6 @@ export default function Profile() {
         <div className="min-w-0">
           <h1 className="font-display text-[20px] font-bold leading-tight hd:lg:text-[26px]">{t('我的')}</h1>
           <p className="mt-1 text-xs text-text-sub hd:lg:text-[13px]">{t('资料 · 目标 · 训练数据')}</p>
-        </div>
-        <div className="relative shrink-0">
-          <button
-            type="button"
-            aria-label={t('通知')}
-            aria-expanded={noticeOpen}
-            onClick={() => setNoticeOpen((v) => !v)}
-            className="flex h-9 w-9 items-center justify-center rounded-full border border-border bg-surface text-text"
-          >
-            <Bell size={20} />
-          </button>
-          {noticeOpen && (
-            <div className="absolute right-0 top-10 z-50 w-40 rounded-md border border-border bg-surface px-3 py-2.5 text-[13px] text-text-sub shadow-card">
-              {t('暂无新通知')}
-            </div>
-          )}
         </div>
       </header>
 
@@ -141,24 +115,31 @@ export default function Profile() {
           )}
 
           {/* 本周目标 */}
-          {user && (goalSessions > 0 || goalMinutes > 0) && (
+          {user && (
             <section className="reveal reveal-3 rounded-md border border-border bg-surface p-4 hd:lg:p-5">
               <div className="flex items-center justify-between">
                 <p className="flex items-center gap-1.5 text-sm font-semibold">
                   <Target size={15} className="text-primary" /> {t('本周目标')}
                 </p>
-                <Link to="/profile/edit" className="text-[13px] text-text-sub">
-                  {t('调整')}
+                <Link to="/profile/goals" className="py-2 text-[13px] text-text-sub">
+                  {t('调整目标')}
                 </Link>
               </div>
-              {goalSessions > 0 && <GoalBar label={t('训练次数')} current={week.length} target={goalSessions} unit={t('次')} />}
+              {goalSessions > 0 && <GoalBar label={t('训练次数')} current={weekly.count} target={goalSessions} unit={t('次')} />}
               {goalMinutes > 0 && <GoalBar label={t('训练时长')} current={weekMinutes} target={goalMinutes} unit={t('分钟')} />}
+              {!goalSessions && !goalMinutes && <p className="text-[13px] text-text-sub">{t('尚未设置训练目标')}</p>}
             </section>
           )}
 
           {/* 累计数据 */}
           <section className="reveal reveal-4">
             <h2 className="mb-2 font-display text-base font-bold hd:lg:mb-3 hd:lg:text-lg">{t('累计数据')}</h2>
+            {(overview.loading || !overview.online || overview.failed) && (
+              <p role="status" className="mb-2 text-[13px] text-text-sub">
+                {overview.loading ? t('正在加载…') : !overview.online ? t('当前离线，显示此设备可用的训练记录。') : t('部分训练记录加载失败，已显示此设备可用的记录。')}{' '}
+                {overview.failed && overview.online && <button type="button" className="underline" onClick={overview.retry}>{t('重试')}</button>}
+              </p>
+            )}
             <div className="grid grid-cols-2 gap-2 hd:lg:gap-3">
               {[
                 { label: '总次数', value: `${summary.count}`, unit: '次' },
@@ -213,10 +194,10 @@ export default function Profile() {
 
             <button
               onClick={() => setWeeklyOpen(true)}
-              disabled={week.length === 0}
+              disabled={!cardioWeek}
               className="mt-3 flex w-full items-center justify-center gap-2 rounded-md border border-border py-2.5 text-[15px] font-medium transition-colors active:bg-surface-2 disabled:opacity-50 hd:lg:py-3"
             >
-              <Share2 size={16} /> {week.length > 0 ? t('生成本周战报') : t('本周还没有训练')}
+              <Share2 size={16} /> {cardioWeek ? t('生成本周有氧战报') : t('本周暂无有氧训练')}
             </button>
           </section>
 
@@ -226,14 +207,14 @@ export default function Profile() {
               <ClipboardList size={18} className="shrink-0 text-primary hd:lg:h-5 hd:lg:w-5" />
               <div className="min-w-0">
                 <p className="text-sm font-medium">{t('训练记录')}</p>
-                <p className="mt-0.5 text-[13px] text-text-sub">{t('全部单机训练')}</p>
+                <p className="mt-0.5 text-[13px] text-text-sub">{t('单机、力量和赛事训练')}</p>
               </div>
             </Link>
           </section>
 
           {/* 设置入口 */}
           <section className="reveal reveal-7 overflow-hidden rounded-md border border-border bg-surface">
-            <Row to="/profile/settings" icon={<Settings size={16} />} label={t('设置')} desc={t('通知 · 安全 · 数据 · 偏好 · 关于')} />
+            <Row to="/profile/settings" icon={<Settings size={16} />} label={t('设置')} desc={t('首页提醒 · 安全 · 数据 · 偏好')} />
           </section>
         </div>
       </div>

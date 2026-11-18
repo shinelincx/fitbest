@@ -181,7 +181,10 @@ function sortSessions(sessions: MachineSession[]) {
   return sessions.sort((a, b) => b.date.localeCompare(a.date))
 }
 
-export async function fetchSessions({ requireCloud = false }: { requireCloud?: boolean } = {}): Promise<MachineSession[]> {
+export async function fetchSessions({ requireCloud = false, onCloudError }: {
+  requireCloud?: boolean
+  onCloudError?: () => void
+} = {}): Promise<MachineSession[]> {
   const userId = currentUserId()
   const remote = new Map<string, MachineSession>()
   let complete = false
@@ -208,6 +211,7 @@ export async function fetchSessions({ requireCloud = false }: { requireCloud?: b
       complete = true
     } catch (error) {
       if (requireCloud) throw error
+      onCloudError?.()
     }
   } else if (requireCloud && isCloudAccount()) {
     throw new Error('请登录并联网后导出云端训练记录')

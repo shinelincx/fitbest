@@ -4,6 +4,7 @@ import { MemoryRouter, Route, Routes } from 'react-router-dom'
 import { describe, expect, it, vi } from 'vitest'
 
 vi.mock('react-i18next', () => ({ useTranslation: () => ({ t: (text: string) => text }) }))
+vi.mock('../src/context/AuthContext', () => ({ useAuth: () => ({ sessionExpired: false }) }))
 
 import FitbestLayout from '../src/components/Layout'
 import HyroxLayout from '../../hyrox-trainer/src/components/Layout'
@@ -35,4 +36,13 @@ describe.each([
     expect(html).not.toContain('<nav')
     expect(html).toContain('pb-[calc(env(safe-area-inset-bottom)+12px)]')
   })
+
+  if (_name === 'FITBEST') {
+    it('资料和目标编辑给保存区预留空间', () => {
+      for (const path of ['/profile/edit', '/profile/goals']) {
+        expect(render(path)).not.toContain('<nav')
+        expect(render(path)).toContain('scroll-pb-24')
+      }
+    })
+  }
 })

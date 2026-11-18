@@ -1,9 +1,9 @@
 package com.ifitbest.server.module.user;
 
 import java.math.BigDecimal;
-import java.time.Year;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.UUID;
 
 import org.springframework.web.bind.annotation.DeleteMapping;
@@ -46,18 +46,21 @@ public class MeController {
 
     // ---------- 请求体 ----------
 
+    public enum ProfileField { avatar, gender, birthYear, heightCm, weightKg }
+
     public record UpdateMeBody(
         @Size(min = 1, max = 20, message = "昵称不能为空") String nickname,
         @Size(max = 64 * 1024) String avatar,
         @Pattern(regexp = "male|female|other") String gender,
         @Min(1900) @Max(value = 2100) Integer birthYear,
         @DecimalMin("50") @DecimalMax("250") BigDecimal heightCm,
-        @DecimalMin("20") @DecimalMax("300") BigDecimal weightKg) {
+        @DecimalMin("20") @DecimalMax("300") BigDecimal weightKg,
+        Set<@NotNull ProfileField> clear) {
     }
 
     public record GoalsBody(
-        @NotNull @Min(0) @Max(100) Integer weeklySessions,
-        @NotNull @Min(0) @Max(10000) Integer weeklyMinutes) {
+        @Min(0) @Max(100) Integer weeklySessions,
+        @Min(0) @Max(10000) Integer weeklyMinutes) {
     }
 
     public record BindPhoneBody(
@@ -104,7 +107,7 @@ public class MeController {
     @PatchMapping
     public Map<String, Object> updateMe(@CurrentUser UUID userId, @Valid @RequestBody UpdateMeBody body) {
         return users.updateMe(userId, body.nickname(), body.avatar(), body.gender(),
-            body.birthYear(), body.heightCm(), body.weightKg());
+            body.birthYear(), body.heightCm(), body.weightKg(), body.clear() == null ? Set.of() : body.clear());
     }
 
     @PatchMapping("goals")

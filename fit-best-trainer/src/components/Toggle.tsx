@@ -1,3 +1,4 @@
+import { useId } from 'react'
 import { useTranslation } from 'react-i18next'
 
 export default function Toggle({
@@ -12,14 +13,20 @@ export default function Toggle({
   desc: string
 }) {
   const { t } = useTranslation()
+  const description = useId()
   return (
     <button
+      type="button"
+      role="switch"
+      aria-checked={on}
+      aria-label={t(label)}
+      aria-describedby={description}
       onClick={() => onChange(!on)}
       className="flex w-full items-center justify-between rounded-md border border-border bg-surface p-4 text-left"
     >
       <div>
         <p className="text-sm font-medium">{t(label)}</p>
-        <p className="mt-0.5 text-[14px] text-text-sub">{t(desc)}</p>
+        <p id={description} className="mt-0.5 text-[14px] text-text-sub">{t(desc)}</p>
       </div>
       <span className={`relative h-6 w-11 shrink-0 rounded-full transition-colors ${on ? 'bg-text' : 'bg-surface-2'}`}>
         <span

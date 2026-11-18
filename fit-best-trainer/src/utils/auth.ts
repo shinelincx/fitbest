@@ -24,12 +24,14 @@ export interface Account {
   goalMinutes?: number
 }
 
+export type ClearableProfileField = 'avatar' | 'gender' | 'birthYear' | 'heightCm' | 'weightKg'
+
 export type ProfilePatch = Partial<
   Pick<
     Account,
     'nickname' | 'avatar' | 'gender' | 'birthYear' | 'heightCm' | 'weightKg' | 'goalSessions' | 'goalMinutes'
   >
->
+> & { clear?: ClearableProfileField[] }
 
 export type IdentityKind = 'phone' | 'email' | 'wechat'
 export type Verification = { channel: 'phone' | 'email'; code: string }
@@ -249,28 +251,26 @@ export function sendSecurityCode(id: string, channel: Verification['channel']): 
   return request('/me/security/code', { method: 'POST', body: { channel }, userId: id })
 }
 
-export async function sendSmsCode(phone: string, scene: CodeScene = 'login'): Promise<string> {
+export async function sendSmsCode(phone: string, scene: CodeScene = 'login'): Promise<CodeDelivery> {
   const p = phone.trim()
   if (!PHONE_RE.test(p)) throw new Error('请输入正确的 11 位手机号')
-  if (scene === 'bind' && !isCloudAccount()) return issueCode('sms', p)
-  const res = await request<{ devCode?: string }>('/auth/sms/send', {
+  if (scene === 'bind' && !isCloudAccount()) return { devCode: issueCode('sms', p), cooldown: 60, expiresIn: 300 }
+  return request<CodeDelivery>('/auth/sms/send', {
     method: 'POST',
     body: { phone: p, scene },
     noRefresh: true,
   })
-  return res?.devCode ?? ''
 }
 
-export async function sendEmailCode(email: string, scene: CodeScene = 'login'): Promise<string> {
+export async function sendEmailCode(email: string, scene: CodeScene = 'login'): Promise<CodeDelivery> {
   const e = normalizeEmail(email)
   if (!EMAIL_RE.test(e)) throw new Error('请输入正确的邮箱地址')
-  if (scene === 'bind' && !isCloudAccount()) return issueCode('email', e)
-  const res = await request<{ devCode?: string }>('/auth/email/send', {
+  if (scene === 'bind' && !isCloudAccount()) return { devCode: issueCode('email', e), cooldown: 60, expiresIn: 300 }
+  return request<CodeDelivery>('/auth/email/send', {
     method: 'POST',
     body: { email: e, scene },
     noRefresh: true,
   })
-  return res?.devCode ?? ''
 }
 
 // —— 本地账号（游客 / 演示遗留数据）——
@@ -444,7 +444,9 @@ export async function updateAccount(id: string, patch: ProfilePatch): Promise<Ac
     const users = readUsers()
     const index = users.findIndex((u) => u.id === id)
     if (index < 0) throw new Error('账号不存在，请重新登录')
-    const next = { ...users[index], ...patch }
+    const { clear, ...fields } = patch
+    const next = { ...users[index], ...fields }
+    for (const field of clear ?? []) delete next[field]
     const list = [...users]
     list[index] = next
     writeUsers(list)
@@ -452,6 +454,7 @@ export async function updateAccount(id: string, patch: ProfilePatch): Promise<Ac
   }
 
   const profileBody: Record<string, unknown> = {}
+  if (patch.clear?.length) profileBody.clear = patch.clear
   if (patch.nickname !== undefined) profileBody.nickname = patch.nickname
   if (patch.avatar !== undefined) profileBody.avatar = patch.avatar
   if (patch.gender !== undefined) profileBody.gender = patch.gender
@@ -464,13 +467,12 @@ export async function updateAccount(id: string, patch: ProfilePatch): Promise<Ac
     saved = saveCloudProfile(id, profile)
   }
   if (patch.goalSessions !== undefined || patch.goalMinutes !== undefined) {
-    const current = saved ?? readCloudAccount()
     const profile = await request<CloudProfile>('/me/goals', {
       method: 'PATCH',
       userId: id,
       body: {
-        weeklySessions: patch.goalSessions ?? current?.goalSessions ?? 0,
-        weeklyMinutes: patch.goalMinutes ?? current?.goalMinutes ?? 0,
+        weeklySessions: patch.goalSessions,
+        weeklyMinutes: patch.goalMinutes,
       },
     })
     return saveCloudProfile(id, profile)

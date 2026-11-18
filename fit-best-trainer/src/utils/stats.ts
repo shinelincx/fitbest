@@ -64,7 +64,7 @@ export function formatDate(iso: string): string {
 }
 
 // 连续训练天数：今天还没练时从昨天开始算，避免当天早上就断签
-export function trainingStreak(list: MachineSession[], base = new Date()): number {
+export function trainingStreak(list: readonly { date: string }[], base = new Date()): number {
   const days = new Set(list.map((s) => new Date(s.date).toDateString()))
   const cursor = new Date(base)
   cursor.setHours(0, 0, 0, 0)

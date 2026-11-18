@@ -137,6 +137,22 @@ class TrainingSyncPostgresTest {
     }
 
     @Test
+    void profileClearAndPartialGoalsPreserveOmittedFields() {
+        assertThat(exchange("/api/v1/me", HttpMethod.PATCH, "{\"heightCm\":175.5,\"weightKg\":72}")
+            .getStatusCode().value()).isEqualTo(200);
+        assertThat(exchange("/api/v1/me/goals", HttpMethod.PATCH, "{\"weeklySessions\":4,\"weeklyMinutes\":100}")
+            .getStatusCode().value()).isEqualTo(200);
+        assertThat(exchange("/api/v1/me", HttpMethod.PATCH, "{\"clear\":[\"heightCm\"]}")
+            .getStatusCode().value()).isEqualTo(200);
+        assertThat(exchange("/api/v1/me/goals", HttpMethod.PATCH, "{\"weeklySessions\":0}")
+            .getStatusCode().value()).isEqualTo(200);
+        var saved = exchange("/api/v1/me", HttpMethod.GET, null).getBody();
+        assertThat(saved.get("heightCm")).isNull();
+        assertThat(((Number) saved.get("weightKg")).intValue()).isEqualTo(72);
+        assertThat(saved.get("goals")).isEqualTo(Map.of("weeklySessions", 0, "weeklyMinutes", 100));
+    }
+
+    @Test
     @EnabledIfEnvironmentVariable(named = "FITBEST_SYNC_RUN_CLIENT", matches = "true")
     void offlineClientReplaysIntoOneCompleteDatabaseRow() throws Exception {
         Path client = Path.of("..", "fit-best-trainer").toAbsolutePath().normalize();

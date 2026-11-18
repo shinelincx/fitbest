@@ -2,7 +2,7 @@ import { useTranslation } from 'react-i18next'
 import { ArrowLeft } from 'lucide-react'
 import { useNavigate } from 'react-router-dom'
 
-export default function PageHeader({ title, desc }: { title: string; desc?: string }) {
+export default function PageHeader({ title, desc, onBack }: { title: string; desc?: string; onBack?: () => void }) {
   const { t } = useTranslation()
   const navigate = useNavigate()
   return (
@@ -10,8 +10,8 @@ export default function PageHeader({ title, desc }: { title: string; desc?: stri
       <button
         type="button"
         aria-label={t('返回')}
-        onClick={() => navigate(-1)}
-        className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full border border-border bg-surface text-text"
+        onClick={onBack ?? (() => navigate(-1))}
+        className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full border border-border bg-surface text-text"
       >
         <ArrowLeft size={17} />
       </button>

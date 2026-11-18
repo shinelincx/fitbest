@@ -115,26 +115,26 @@ public class UsersService {
 
     @Transactional
     public Map<String, Object> updateMe(UUID userId, String nickname, String avatar, String gender,
-                                        Integer birthYear, java.math.BigDecimal heightCm, java.math.BigDecimal weightKg) {
-        loadUser(userId);
-        User user = users.findById(userId).orElseThrow();
+                                        Integer birthYear, java.math.BigDecimal heightCm, java.math.BigDecimal weightKg,
+                                        java.util.Set<MeController.ProfileField> clear) {
+        User user = lockActiveUser(userId);
         if (nickname != null) {
             user.setNickname(nickname);
         }
-        if (avatar != null) {
-            user.setAvatar(avatar);
+        if (avatar != null || clear.contains(MeController.ProfileField.avatar)) {
+            user.setAvatar(clear.contains(MeController.ProfileField.avatar) ? null : avatar);
         }
-        if (gender != null) {
-            user.setGender(gender);
+        if (gender != null || clear.contains(MeController.ProfileField.gender)) {
+            user.setGender(clear.contains(MeController.ProfileField.gender) ? null : gender);
         }
-        if (birthYear != null) {
-            user.setBirthYear(birthYear);
+        if (birthYear != null || clear.contains(MeController.ProfileField.birthYear)) {
+            user.setBirthYear(clear.contains(MeController.ProfileField.birthYear) ? null : birthYear);
         }
-        if (heightCm != null) {
-            user.setHeightCm(heightCm);
+        if (heightCm != null || clear.contains(MeController.ProfileField.heightCm)) {
+            user.setHeightCm(clear.contains(MeController.ProfileField.heightCm) ? null : heightCm);
         }
-        if (weightKg != null) {
-            user.setWeightKg(weightKg);
+        if (weightKg != null || clear.contains(MeController.ProfileField.weightKg)) {
+            user.setWeightKg(clear.contains(MeController.ProfileField.weightKg) ? null : weightKg);
         }
         user.setUpdatedAt(Times.nowUtc());
         users.save(user);
@@ -142,15 +142,15 @@ public class UsersService {
     }
 
     @Transactional
-    public Map<String, Object> updateGoals(UUID userId, int weeklySessions, int weeklyMinutes) {
-        loadUser(userId);
+    public Map<String, Object> updateGoals(UUID userId, Integer weeklySessions, Integer weeklyMinutes) {
+        lockActiveUser(userId);
         UserGoal goal = goals.findById(userId).orElseGet(() -> {
             UserGoal g = new UserGoal();
             g.setUserId(userId);
             return g;
         });
-        goal.setWeeklySessions(weeklySessions);
-        goal.setWeeklyMinutes(weeklyMinutes);
+        if (weeklySessions != null) goal.setWeeklySessions(weeklySessions);
+        if (weeklyMinutes != null) goal.setWeeklyMinutes(weeklyMinutes);
         goal.setUpdatedAt(Times.nowUtc());
         goals.save(goal);
         return build(loadUser(userId));

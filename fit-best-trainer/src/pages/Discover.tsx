@@ -1,5 +1,5 @@
 import { useTranslation } from 'react-i18next'
-import { useNavigate } from 'react-router-dom'
+import { Link, useNavigate } from 'react-router-dom'
 import { ArrowLeft, Bluetooth, Loader2, Radar, RefreshCw } from 'lucide-react'
 import { useDevices } from '../context/DeviceContext'
 
@@ -59,7 +59,7 @@ export default function Discover() {
                 <p className="mt-1 text-[12px] leading-relaxed text-text-sub">
                   {t('选中设备后自动识别类型并进入训练')}
                 </p>
-                {allError && <p className="mt-3 text-[13px] text-danger">{allError}</p>}
+                {allError && <p role="alert" className="mt-3 text-[13px] text-danger">{allError}</p>}
                 <button
                   onClick={() => startScan()}
                   className="mt-5 rounded-md bg-text px-6 py-2.5 text-[14px] font-medium text-bg"
@@ -83,6 +83,9 @@ export default function Discover() {
             )}
           </div>
         )}
+        <Link to="/machines" className="mx-auto mt-4 flex min-h-11 w-max items-center rounded-md border border-border px-4 text-sm font-medium">
+          {t('浏览器械')}
+        </Link>
       </div>
     </div>
   )

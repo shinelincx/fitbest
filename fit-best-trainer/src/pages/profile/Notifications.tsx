@@ -18,7 +18,7 @@ export default function Notifications() {
 
   return (
     <div className="px-5 pt-5">
-      <PageHeader title={t('通知提醒')} desc={t('按设定时间接收训练提醒')} />
+      <PageHeader title={t('首页训练提醒')} desc={t('设置仅保存在此设备的浏览器，切换账号后仍适用。')} />
 
       <Toggle
         on={prefs.reminderEnabled}
@@ -35,7 +35,7 @@ export default function Notifications() {
           <input
             type="time"
             value={prefs.reminderTime}
-            onChange={(e) => patch({ reminderTime: e.target.value })}
+            onChange={(e) => { if (e.target.value) patch({ reminderTime: e.target.value }) }}
             disabled={!prefs.reminderEnabled}
             className={`${inputCls} ${prefs.reminderEnabled ? '' : 'opacity-50'}`}
           />

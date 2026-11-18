@@ -1,7 +1,8 @@
-import { useEffect, useState } from 'react'
+import { useState } from 'react'
+import { useSearchParams } from 'react-router-dom'
 import { useTranslation } from 'react-i18next'
 import { ChevronDown, Flame, Heart, Share2, Trash2, TriangleAlert, Zap } from 'lucide-react'
-import { deleteSession, deleteStrengthSession, fetchSessions, fetchStrengthSessions, flushMachineSessions, subscribeToMachineSessions } from '../api'
+import { deleteSession, deleteStrengthSession, flushMachineSessions } from '../api'
 import type { MachineSession, MachineType, StrengthSession } from '../types'
 import { MACHINES, MACHINE_MAP, MODE_LABELS } from '../mock/data'
 import { EQUIPMENT_LABELS } from '../mock/strength'
@@ -12,66 +13,49 @@ import { formatTime } from '../utils/format'
 import { useToast } from '../components/Toast'
 import { useAuth } from '../context/AuthContext'
 import ShareSheet from '../components/ShareSheet'
+import { useTrainingOverview } from '../hooks/useTrainingOverview'
 
-type Filter = 'all' | 'strength' | MachineType
+type Filter = 'all' | 'strength' | 'race' | MachineType
+const filters: Filter[] = ['all', 'strength', 'race', ...MACHINES.map((m) => m.type)]
 
 type Item =
   | { kind: 'cardio'; s: MachineSession }
   | { kind: 'strength'; s: StrengthSession }
 
 export default function Records() {
+  const [query, setQuery] = useSearchParams()
+  const filter = filters.find((item) => item === query.get('kind')) ?? 'all'
+  const { user, sessionExpired } = useAuth()
+  return <RecordsList key={user?.id ?? 'guest'} owner={user} sessionExpired={sessionExpired} filter={filter}
+    setFilter={(next) => setQuery(next === 'all' ? {} : { kind: next }, { replace: true })} />
+}
+
+function RecordsList({ owner: user, sessionExpired, filter, setFilter }: {
+  owner: ReturnType<typeof useAuth>['user']
+  sessionExpired: boolean
+  filter: Filter
+  setFilter: (filter: Filter) => void
+}) {
   const { t } = useTranslation()
-  const [sessions, setSessions] = useState<MachineSession[]>([])
-  const [strength, setStrength] = useState<StrengthSession[]>([])
-  const [filter, setFilter] = useState<Filter>('all')
   const [expanded, setExpanded] = useState<string | null>(null)
   const [shareSession, setShareSession] = useState<MachineSession | null>(null)
   const [shareStrength, setShareStrength] = useState<StrengthSession | null>(null)
-  const [loading, setLoading] = useState(true)
   const [syncing, setSyncing] = useState(false)
   const toast = useToast()
-  const { user } = useAuth()
-
-  useEffect(() => {
-    let active = true
-    let latest = 0
-    const refresh = async () => {
-      const version = ++latest
-      const [s, st] = await Promise.all([fetchSessions(), fetchStrengthSessions()])
-      if (active && version === latest) {
-        setSessions(s)
-        setStrength(st)
-        setLoading(false)
-      }
-    }
-    const unsubscribe = subscribeToMachineSessions(() => void refresh())
-    void refresh()
-    return () => {
-      active = false
-      unsubscribe()
-    }
-  }, [user?.id])
-
-  const items: Item[] = [
-    ...sessions.map((s) => ({ kind: 'cardio' as const, s })),
-    ...strength.map((s) => ({ kind: 'strength' as const, s })),
-  ]
-    .filter((it) => {
-      if (filter === 'all') return true
-      if (filter === 'strength') return it.kind === 'strength'
-      return it.kind === 'cardio' && it.s.machine === filter
-    })
-    .sort((a, b) => +new Date(b.s.date) - +new Date(a.s.date))
+  const overview = useTrainingOverview(user?.id ?? null, sessionExpired)
+  const { sessions, loading } = overview
+  const items = overview.all.filter((item) => {
+    if (filter === 'all') return true
+    if (filter === 'strength') return item.app === 'strength'
+    if (filter === 'race') return item.app === 'hyrox' || item.app === 'btwe'
+    return item.app === 'cardio' && item.machine === filter
+  })
 
   async function handleDelete(id: string, kind: Item['kind']) {
     try {
-      if (kind === 'strength') {
-        await deleteStrengthSession(id)
-        setStrength((prev) => prev.filter((s) => s.id !== id))
-      } else {
-        await deleteSession(id)
-        setSessions((prev) => prev.filter((s) => s.id !== id))
-      }
+      if (kind === 'strength') await deleteStrengthSession(id, user?.id ?? null)
+      else await deleteSession(id)
+      overview.retry()
       toast(t('记录已删除'))
     } catch (error) {
       toast(t(error instanceof Error ? error.message : '删除失败，请重试'))
@@ -83,17 +67,24 @@ export default function Records() {
       <header className="reveal reveal-1 mb-4">
         <h1 className="font-display text-[20px] font-bold leading-tight">{t('训练记录')}</h1>
         <p className="mt-1 text-xs text-text-sub">
-          {t('共 {{count}} 次训练', { count: sessions.length + strength.length })}
+          {t('共 {{count}} 次训练', { count: items.length })}
         </p>
+        {(!overview.online || overview.failed) && <p role="status" className="mt-2 text-[13px] text-text-sub">
+          {!overview.online ? t('当前离线，显示此设备可用的训练记录。') : t('部分训练记录加载失败，已显示此设备可用的记录。')}{' '}
+          {overview.online && <button type="button" onClick={overview.retry} className="underline">{t('重试')}</button>}
+        </p>}
         {sessions.some((s) => s.syncState) && (
           <button
             className="mt-2 text-xs text-primary disabled:opacity-60"
             disabled={syncing}
             onClick={async () => {
               setSyncing(true)
-              await flushMachineSessions(true)
-              setSessions(await fetchSessions())
-              setSyncing(false)
+              try {
+                await flushMachineSessions(true)
+                overview.retry()
+              } finally {
+                setSyncing(false)
+              }
             }}
           >
             {syncing ? t('正在同步…') : t('重试同步')}
@@ -102,12 +93,13 @@ export default function Records() {
       </header>
 
       <div className="reveal reveal-2 mb-4 -mx-1 flex gap-2 overflow-x-auto px-1 pb-1">
-        {(['all', 'strength', ...MACHINES.map((m) => m.type)] as Filter[]).map((key) => {
+        {filters.map((key) => {
           const label =
-            key === 'all' ? t('全部') : key === 'strength' ? t('力量') : t(MACHINE_MAP[key as MachineType].name)
+            key === 'all' ? t('全部') : key === 'strength' ? t('力量') : key === 'race' ? t('赛事') : t(MACHINE_MAP[key].name)
           return (
             <button
               key={key}
+              aria-pressed={filter === key}
               onClick={() => setFilter(key)}
               className={`shrink-0 rounded-full border px-3.5 py-1.5 text-xs transition-colors ${
                 filter === key ? 'border-text bg-text text-bg' : 'border-border bg-surface text-text-sub'
@@ -118,6 +110,7 @@ export default function Records() {
           )
         })}
       </div>
+      {filter === 'race' && <p className="mb-3 text-[13px] text-text-sub">{t('赛事摘要由 HYROX 和 BTWE 提供，详情和管理请前往对应应用。')}</p>}
 
       {loading ? (
         <div className="flex h-40 items-center justify-center">
@@ -131,9 +124,18 @@ export default function Records() {
       ) : (
         <div className="space-y-2 pb-2 hd:lg:grid hd:lg:grid-cols-2 hd:lg:items-start hd:lg:gap-3 hd:lg:space-y-0">
           {items.map((it) => {
-            const open = expanded === it.s.id
-            if (it.kind === 'strength') return renderStrength(it.s, open, setExpanded, setShareStrength, handleDelete, t)
-            return renderCardio(it.s, open, setExpanded, setShareSession, handleDelete, t)
+            const open = expanded === it.id
+            if (it.app === 'strength') return renderStrength(it, open, setExpanded, setShareStrength, handleDelete, t)
+            if (it.app === 'cardio') return renderCardio(it, open, setExpanded, setShareSession, handleDelete, t)
+            return (
+              <div key={`${it.app}:${it.id}`} className="flex items-center justify-between gap-2 rounded-md border border-border bg-surface p-3">
+                <div>
+                  <p className="text-sm font-medium">{it.app.toUpperCase()}</p>
+                  <p className="mt-0.5 text-xs text-text-sub">{formatDate(it.date)} · {formatDuration(it.durationSec)}</p>
+                </div>
+                {it.distanceM > 0 && <p className="font-mono text-sm font-bold">{formatDistance(it.distanceM)}</p>}
+              </div>
+            )
           })}
         </div>
       )}
