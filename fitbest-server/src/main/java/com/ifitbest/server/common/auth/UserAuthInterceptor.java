@@ -1,6 +1,7 @@
 package com.ifitbest.server.common.auth;
 
 import java.util.Map;
+import java.util.UUID;
 
 import org.springframework.core.annotation.AnnotatedElementUtils;
 import org.springframework.stereotype.Component;
@@ -9,6 +10,7 @@ import org.springframework.web.servlet.HandlerInterceptor;
 
 import com.ifitbest.server.common.error.BizException;
 import com.ifitbest.server.config.FitbestProperties;
+import com.ifitbest.server.infra.persistence.UserRepo;
 
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
@@ -24,10 +26,12 @@ public class UserAuthInterceptor implements HandlerInterceptor {
 
     private final JwtCodec jwt;
     private final FitbestProperties props;
+    private final UserRepo users;
 
-    public UserAuthInterceptor(JwtCodec jwt, FitbestProperties props) {
+    public UserAuthInterceptor(JwtCodec jwt, FitbestProperties props, UserRepo users) {
         this.jwt = jwt;
         this.props = props;
+        this.users = users;
     }
 
     @Override
@@ -50,16 +54,24 @@ public class UserAuthInterceptor implements HandlerInterceptor {
             }
             throw BizException.unauthorized("请先登录");
         }
+        UUID userId;
         try {
             Map<String, Object> claims = jwt.verify(token, JwtCodec.TYP_ACCESS, props.getJwt().getAccessSecret());
-            request.setAttribute(ATTR_USER_ID, String.valueOf(claims.get("sub")));
-            return true;
+            userId = UUID.fromString(String.valueOf(claims.get("sub")));
         } catch (Exception e) {
             if (optional) {
                 return true;
             }
             throw BizException.unauthorized("登录已过期，请重新登录");
         }
+        if (!users.existsByIdAndStatus(userId, "active")) {
+            if (optional) {
+                return true;
+            }
+            throw BizException.unauthorized("登录已过期，请重新登录");
+        }
+        request.setAttribute(ATTR_USER_ID, userId.toString());
+        return true;
     }
 
     public static String bearer(HttpServletRequest request) {

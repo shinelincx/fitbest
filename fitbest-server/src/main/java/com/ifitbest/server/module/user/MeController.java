@@ -47,7 +47,7 @@ public class MeController {
 
     public record UpdateMeBody(
         @Size(min = 1, max = 20, message = "昵称不能为空") String nickname,
-        @Size(max = 500) String avatar,
+        @Size(max = 64 * 1024) String avatar,
         @Pattern(regexp = "male|female|other") String gender,
         @Min(1900) @Max(value = 2100) Integer birthYear,
         @DecimalMin("50") @DecimalMax("250") BigDecimal heightCm,

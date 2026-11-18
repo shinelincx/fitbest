@@ -5,7 +5,7 @@ import { LogOut, Shield, Trash2 } from 'lucide-react'
 import PageHeader from '../../components/PageHeader'
 import { useToast } from '../../components/Toast'
 import { useAuth } from '../../context/AuthContext'
-import { maskContact, maskPhone, verifyPassword } from '../../utils/auth'
+import { maskContact, maskPhone } from '../../utils/auth'
 
 const inputCls =
   'mt-1.5 w-full rounded-md border border-border bg-surface px-4 py-3 text-sm outline-none focus:border-text'
@@ -26,8 +26,9 @@ export default function Security() {
   const [deleteOpen, setDeleteOpen] = useState(false)
   const [deletePw, setDeletePw] = useState('')
   const [deleteError, setDeleteError] = useState('')
+  const [deleteSaving, setDeleteSaving] = useState(false)
 
-  if (!user) return <Navigate to="/login" replace />
+  if (!user) return <Navigate to={deleteSaving ? '/' : '/login'} replace />
 
   async function handleChangePassword() {
     if (pwSaving) return
@@ -54,22 +55,17 @@ export default function Security() {
   }
 
   async function handleDelete() {
-    if (user?.passwordHash) {
-      if (!deletePw) return setDeleteError(t('请输入密码确认身份'))
-      setDeleteError('')
-      try {
-        if (!(await verifyPassword(user.id, deletePw))) return setDeleteError(t('密码不正确，无法注销'))
-      } catch {
-        return setDeleteError(t('密码不正确，无法注销'))
-      }
-    }
+    if (deleteSaving) return
+    if (user?.passwordHash && !deletePw) return setDeleteError(t('请输入密码确认身份'))
+    setDeleteError('')
+    setDeleteSaving(true)
     try {
       await deleteAccount(deletePw || undefined)
     } catch (err) {
+      setDeleteSaving(false)
       return setDeleteError(err instanceof Error ? err.message : t('注销失败，请重试'))
     }
     toast(t('账号已注销'))
-    navigate('/')
   }
 
   return (
@@ -194,10 +190,10 @@ export default function Security() {
             </label>
             {deleteError && <p className="mt-2 text-[13px] text-danger">{t(deleteError)}</p>}
             <div className="mt-3 flex gap-2">
-              <button onClick={() => setDeleteOpen(false)} className="flex-1 rounded-md border border-border py-2.5 text-sm">
+              <button onClick={() => setDeleteOpen(false)} disabled={deleteSaving} className="flex-1 rounded-md border border-border py-2.5 text-sm disabled:opacity-60">
                 {t('取消')}
               </button>
-              <button onClick={handleDelete} className="flex-1 rounded-md bg-danger py-2.5 text-sm font-semibold text-bg">
+              <button onClick={handleDelete} disabled={deleteSaving} className="flex-1 rounded-md bg-danger py-2.5 text-sm font-semibold text-bg disabled:opacity-60">
                 {t('确认注销')}
               </button>
             </div>

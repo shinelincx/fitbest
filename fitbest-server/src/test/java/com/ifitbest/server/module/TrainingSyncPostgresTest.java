@@ -85,6 +85,24 @@ class TrainingSyncPostgresTest {
     }
 
     @Test
+    void accountDeletionInvalidatesPreviouslyIssuedAccessTokensForTrainingData() {
+        assertThat(exchange("/api/v1/sessions?range=all", HttpMethod.GET, null).getStatusCode().value()).isEqualTo(200);
+        assertThat(exchange("/api/v1/me", HttpMethod.DELETE, null).getStatusCode().value()).isEqualTo(200);
+        assertThat(exchange("/api/v1/sessions?range=all", HttpMethod.GET, null).getStatusCode().value()).isEqualTo(401);
+    }
+
+    @Test
+    void profileAcceptsBrowserSizedAvatarAndRejectsOversizedInput() {
+        String avatar = "data:image/jpeg;base64," + "A".repeat(2048);
+        var saved = exchange("/api/v1/me", HttpMethod.PATCH, "{\"avatar\":\"" + avatar + "\"}");
+        assertThat(saved.getStatusCode().value()).isEqualTo(200);
+        assertThat(exchange("/api/v1/me", HttpMethod.GET, null).getBody().get("avatar")).isEqualTo(avatar);
+        var oversized = exchange("/api/v1/me", HttpMethod.PATCH, "{\"avatar\":\"" + "A".repeat(65_537) + "\"}");
+        assertThat(oversized.getStatusCode().value()).isEqualTo(400);
+        assertThat(exchange("/api/v1/me", HttpMethod.GET, null).getBody().get("avatar")).isEqualTo(avatar);
+    }
+
+    @Test
     @EnabledIfEnvironmentVariable(named = "FITBEST_SYNC_RUN_CLIENT", matches = "true")
     void offlineClientReplaysIntoOneCompleteDatabaseRow() throws Exception {
         Path client = Path.of("..", "fit-best-trainer").toAbsolutePath().normalize();

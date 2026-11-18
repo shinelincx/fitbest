@@ -117,12 +117,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   async function changePassword(oldPassword: string, newPassword: string) {
     if (!user) throw new Error('请先登录')
-    await changePasswordApi(user.id, oldPassword, newPassword)
+    setUser(await changePasswordApi(user.id, oldPassword, newPassword))
   }
 
   async function setPassword(newPassword: string) {
     if (!user) throw new Error('请先登录')
-    await setPasswordApi(user.id, newPassword)
+    setUser(await setPasswordApi(user.id, newPassword))
   }
 
   async function deleteAccount(password?: string) {

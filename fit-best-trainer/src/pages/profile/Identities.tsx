@@ -48,10 +48,10 @@ export default function Identities() {
   async function sendCode() {
     try {
       if (binding === 'email') {
-        const c = await sendEmailCode(email)
+        const c = await sendEmailCode(email, 'bind')
         toast(c ? t('验证码已发送：{{code}}', { code: c }) : t('验证码已发送，请查收邮件'))
       } else {
-        const c = await sendSmsCode(phone)
+        const c = await sendSmsCode(phone, 'bind')
         toast(c ? t('验证码已发送：{{code}}', { code: c }) : t('验证码已发送，请查收短信'))
       }
       setLeft(60)

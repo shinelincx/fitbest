@@ -78,7 +78,7 @@ export default function MachineTrain() {
   const { t } = useTranslation()
   const { type } = useParams<{ type: string }>()
   const machineType = (type ?? '') as MachineType
-  const machine = MACHINE_MAP[machineType]
+  const machine = Object.hasOwn(MACHINE_MAP, machineType) ? MACHINE_MAP[machineType] : undefined
   const navigate = useNavigate()
   const toast = useToast()
   const { user } = useAuth()
@@ -89,7 +89,7 @@ export default function MachineTrain() {
   }, [])
 
   const { devices, disconnectDevice, startDevice, stopDevice } = useDevices()
-  const device = devices[machineType]
+  const device = machine ? devices[machineType] : undefined
   const hrDevice = devices.heartRate
 
   const [mode, setMode] = useState<TrainMode>('free')
@@ -119,7 +119,7 @@ export default function MachineTrain() {
   const phaseRef = useRef<'work' | 'rest'>('work')
 
   const Icon = MACHINE_ICON[machineType] ?? Gauge
-  const metrics = device.metrics
+  const metrics = device?.metrics ?? {}
   const hr = hrDevice.metrics.heartRate ?? 0
 
   const elapsed = running || paused ? metrics.elapsedTime ?? 0 : 0
@@ -273,7 +273,7 @@ export default function MachineTrain() {
     }
   }, [interval.phase, running, paused, mode])
 
-  if (!machine) {
+  if (!machine || !device) {
     return (
       <div className="p-8 text-center text-base text-text-sub">
         {t('器械不存在')}

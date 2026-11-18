@@ -418,10 +418,7 @@ export default function AuthPage({ mode }: { mode: 'login' | 'register' }) {
         )}
       </form>
 
-      <p className="reveal reveal-3 mt-5 text-center text-[12px] text-text-sub/80">
-        {t('演示环境：短信 / 邮箱验证码固定为 123456，获取后 5 分钟内有效')}
-      </p>
-      <p className="reveal reveal-3 mt-2 pb-2 text-center">
+      <p className="reveal reveal-3 mt-5 pb-2 text-center">
         <Link to="/" className="text-[14px] text-text-sub underline underline-offset-2">
           {t('先逛逛，稍后登录')}
         </Link>
