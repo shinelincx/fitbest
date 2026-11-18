@@ -3,6 +3,9 @@ import react from '@vitejs/plugin-react'
 import tailwindcss from '@tailwindcss/vite'
 import { VitePWA } from 'vite-plugin-pwa'
 
+// 此全局变量由 Workbox 生成的 Service Worker 提供。
+declare const self: { location: { origin: string }; registration: { scope: string } }
+
 // https://vite.dev/config/
 export default defineConfig(({ mode }) => {
   const env = loadEnv(mode, process.cwd(), '')
@@ -17,7 +20,8 @@ export default defineConfig(({ mode }) => {
       tailwindcss(),
       // 原生 APP 全部资源离线打包，不注册 Service Worker。
       ...(!isNative ? [VitePWA({
-        registerType: 'autoUpdate',
+        registerType: 'prompt',
+        injectRegister: false,
         includeAssets: ['favicon.svg', 'favicon.png', 'logo.png', 'apple-touch-icon.png', 'icons/*.png'],
         manifest: {
           name: isHD ? 'FITBEST HD 智能训练' : 'FITBEST 智能训练',
@@ -53,16 +57,20 @@ export default defineConfig(({ mode }) => {
           globPatterns: ['**/*.{js,css,html,svg,png,ico,woff2}'],
           navigateFallback: null,
           cleanupOutdatedCaches: true,
+          clientsClaim: true,
           // HD 版用独立缓存命名空间，避免与手机版 SW 冲突
           cacheId: isHD ? 'fitbest-hd' : 'fitbest',
           runtimeCaching: [
             {
-              urlPattern: ({ request }: { request: Request }) => request.mode === 'navigate',
+              urlPattern: ({ request, url }: { request: Request; url: URL }) =>
+                request.mode === 'navigate' && url.origin === self.location.origin
+                && [new URL(self.registration.scope).pathname, new URL('index.html', self.registration.scope).pathname].includes(url.pathname),
               handler: 'NetworkFirst',
               options: {
                 cacheName: isHD ? 'fitbest-hd-pages' : 'fitbest-pages',
                 networkTimeoutSeconds: 3,
                 expiration: { maxEntries: 8, maxAgeSeconds: 86400 },
+                precacheFallback: { fallbackURL: 'index.html' },
               },
             },
           ],

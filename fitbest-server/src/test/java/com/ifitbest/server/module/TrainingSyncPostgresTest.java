@@ -37,6 +37,7 @@ import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
 import com.ifitbest.server.common.auth.JwtCodec;
 import com.ifitbest.server.infra.redis.RedisCodeService;
 import com.ifitbest.server.module.admin.AdminService;
+import com.ifitbest.server.module.auth.TokenService;
 
 /**
  * 用一次性 PostgreSQL 库执行，配置 FITBEST_SYNC_PG_URL、FITBEST_SYNC_PG_USER 和 FITBEST_SYNC_PG_PASSWORD。
@@ -60,6 +61,7 @@ class TrainingSyncPostgresTest {
     @Autowired private JdbcTemplate jdbc;
     @Autowired private RedisCodeService codes;
     @Autowired private JwtCodec tokens;
+    @Autowired private TokenService tokenService;
     @Autowired private TestRestTemplate http;
     @Autowired private AdminService admin;
     @Autowired private EntityManagerFactory entityManagers;
@@ -146,10 +148,71 @@ class TrainingSyncPostgresTest {
             .getStatusCode().value()).isEqualTo(200);
         assertThat(exchange("/api/v1/me/goals", HttpMethod.PATCH, "{\"weeklySessions\":0}")
             .getStatusCode().value()).isEqualTo(200);
+        assertThat(exchange("/api/v1/me/goals", HttpMethod.PATCH, "{\"weeklySessions\":1.4}")
+            .getStatusCode().value()).isEqualTo(400);
+        assertThat(exchange("/api/v1/me", HttpMethod.PATCH, "{\"heightCm\":175.55}")
+            .getStatusCode().value()).isEqualTo(400);
         var saved = exchange("/api/v1/me", HttpMethod.GET, null).getBody();
         assertThat(saved.get("heightCm")).isNull();
         assertThat(((Number) saved.get("weightKg")).intValue()).isEqualTo(72);
         assertThat(saved.get("goals")).isEqualTo(Map.of("weeklySessions", 0, "weeklyMinutes", 100));
+    }
+
+    @Test
+    void replacePhoneWithVerifiedEmailKeepsOwnerAndRejectsAnExistingNumber() {
+        String email = seedVerifiedEmail();
+        String suffix = String.format("%08d", Math.floorMod(userId.hashCode(), 100_000_000));
+        String old = "131" + suffix;
+        String used = "132" + suffix;
+        String candidate = "133" + suffix;
+        UUID other = UUID.randomUUID();
+        jdbc.update("insert into users (id, nickname, updated_at) values (?, ?, now())", other, "另一个账号");
+        try {
+            for (var entry : Map.of(old, userId, used, other).entrySet()) {
+                jdbc.update("""
+                    insert into user_identities (id, user_id, type, identifier, verified_at)
+                    values (?, ?, 'phone', ?, now())
+                    """, UUID.randomUUID(), entry.getValue(), entry.getKey());
+            }
+            assertThat(replacePhone("phone", old, used)).isEqualTo(409);
+            assertThat(replacePhone("email", email, candidate)).isEqualTo(200);
+            assertThat(jdbc.queryForObject("select user_id from user_identities where identifier = ?", UUID.class, candidate))
+                .isEqualTo(userId);
+            assertThat(jdbc.queryForObject("select user_id from user_identities where identifier = ?", UUID.class, used))
+                .isEqualTo(other);
+            assertThat(jdbc.queryForObject("select count(*) from user_identities where identifier = ?", Integer.class, old))
+                .isZero();
+        } finally {
+            jdbc.update("delete from users where id = ?", other);
+        }
+    }
+
+    private int replacePhone(String channel, String identity, String candidate) {
+        var kind = "phone".equals(channel) ? RedisCodeService.Channel.sms : RedisCodeService.Channel.email;
+        String proof = codes.issue(kind, RedisCodeService.Scene.security, identity);
+        String bindCode = codes.issue(RedisCodeService.Channel.sms, RedisCodeService.Scene.bind, candidate);
+        return exchange("/api/v1/me/identities/phone", HttpMethod.PUT, """
+            {"phone":"%s","code":"%s","verification":{"channel":"%s","code":"%s"}}
+            """.formatted(candidate, bindCode, channel, proof)).getStatusCode().value();
+    }
+
+    @Test
+    void passwordRecoveryRequiresBoundProofAndRevokesPreviousRefreshSessions() {
+        String email = seedVerifiedEmail();
+        String original = new BCryptPasswordEncoder().encode("old-password");
+        jdbc.update("insert into user_credentials (user_id, password_hash, updated_at) values (?, ?, now())",
+            userId, original);
+        var oldSession = tokenService.issue(userId, "test", "127.0.0.1");
+        assertThat(exchange("/api/v1/me/password/recovery", HttpMethod.PUT, "{\"password\":\"new-password\"}")
+            .getStatusCode().value()).isEqualTo(400);
+        String proof = codes.issue(RedisCodeService.Channel.email, RedisCodeService.Scene.security, email);
+        assertThat(exchange("/api/v1/me/password/recovery", HttpMethod.PUT, """
+            {"password":"new-password","verification":{"channel":"email","code":"%s"}}
+            """.formatted(proof)).getStatusCode().value()).isEqualTo(200);
+        assertThat(exchange("/api/v1/auth/refresh", HttpMethod.POST,
+            "{\"refreshToken\":\"" + oldSession.refreshToken() + "\"}").getStatusCode().value()).isEqualTo(401);
+        assertThat(new BCryptPasswordEncoder().matches("new-password",
+            jdbc.queryForObject("select password_hash from user_credentials where user_id = ?", String.class, userId))).isTrue();
     }
 
     @Test

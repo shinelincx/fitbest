@@ -64,7 +64,7 @@ public class TokenService {
         String sub = String.valueOf(payload.get("sub"));
         UUID sid = UUID.fromString(String.valueOf(payload.get("sid")));
 
-        UserSession session = sessions.findById(sid).orElse(null);
+        UserSession session = sessions.findForUpdate(sid).orElse(null);
         if (session == null || !session.getUserId().toString().equals(sub)) {
             throw BizException.unauthorized("登录已过期，请重新登录");
         }

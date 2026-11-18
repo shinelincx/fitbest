@@ -4,7 +4,7 @@
 
 import { loadJSON, removeKey, saveJSON } from './storage'
 import i18n from '../i18n'
-import { clearTokens, isAuthed, request, setTokens } from '../api/client'
+import { clearTokens, getAccessUserId, request, setTokens } from '../api/client'
 
 export interface Account {
   id: string
@@ -76,7 +76,8 @@ export function normalizeEmail(email: string): string {
 
 /** 当前是否为云端登录会话 */
 export function isCloudAuthed(): boolean {
-  return isCloudAccount() && isAuthed()
+  const subject = getAccessUserId()
+  return subject !== null && isCloudAccount() && subject === currentUserId()
 }
 
 /** 凭证失效后仍保留账号归属，重新登录时继续补传。 */
@@ -107,12 +108,24 @@ function writeCloudAccount(account: Account) {
 
 export function getSessionUser(): Account | null {
   const id = loadJSON<string | null>(SESSION_KEY, null)
+  const subject = getAccessUserId()
+  if (subject && id !== CLOUD_PREFIX + subject) return null
   if (!id) return null
   if (id.startsWith(CLOUD_PREFIX)) {
     const account = readCloudAccount()
     return account && id === CLOUD_PREFIX + account.id ? account : null
   }
   return readUsers().find((u) => u.id === id) ?? null
+}
+
+export async function restoreSharedSession(): Promise<Account | null> {
+  const id = getAccessUserId()
+  if (!id) return getSessionUser()
+  const profile = await request<CloudProfile>('/me', { userId: id, signal: AbortSignal.timeout?.(8_000) })
+  if (id !== getAccessUserId() || profile.id !== id) return getSessionUser()
+  const account = toAccount(profile)
+  writeCloudAccount(account)
+  return account
 }
 
 export function getLocalGuestAccount(): Account {
@@ -302,23 +315,23 @@ export async function loginAccount(phone: string, password: string): Promise<Acc
   return cloudLogin(result)
 }
 
-export async function loginWithSms(phone: string, code: string): Promise<Account> {
+export async function loginWithSms(phone: string, code: string, existingOnly?: boolean): Promise<Account> {
   const p = phone.trim()
   if (!PHONE_RE.test(p)) throw new Error('请输入正确的 11 位手机号')
   const result = await request<LoginResult>('/auth/sms/login', {
     method: 'POST',
-    body: { phone: p, code: code.trim(), device: 'trainer-web' },
+    body: { phone: p, code: code.trim(), device: 'trainer-web', existingOnly },
     noRefresh: true,
   })
   return cloudLogin(result)
 }
 
-export async function loginWithEmail(email: string, code: string): Promise<Account> {
+export async function loginWithEmail(email: string, code: string, existingOnly?: boolean): Promise<Account> {
   const e = normalizeEmail(email)
   if (!EMAIL_RE.test(e)) throw new Error('请输入正确的邮箱地址')
   const result = await request<LoginResult>('/auth/email/login', {
     method: 'POST',
-    body: { email: e, code: code.trim(), device: 'trainer-web' },
+    body: { email: e, code: code.trim(), device: 'trainer-web', existingOnly },
     noRefresh: true,
   })
   return cloudLogin(result)
@@ -357,7 +370,7 @@ export async function bindEmail(id: string, email: string, code: string, verific
   return saveCloudProfile(id, profile)
 }
 
-export async function bindPhone(id: string, phone: string, code: string, verification?: Verification): Promise<Account> {
+export async function bindPhone(id: string, phone: string, code: string, verification?: Verification, replace = false): Promise<Account> {
   const p = phone.trim()
   if (!PHONE_RE.test(p)) throw new Error('请输入正确的 11 位手机号')
   if (!isCloudUser(id)) {
@@ -375,11 +388,22 @@ export async function bindPhone(id: string, phone: string, code: string, verific
     return next
   }
   const profile = await request<CloudProfile>('/me/identities/phone', {
-    method: 'POST',
+    method: replace ? 'PUT' : 'POST',
     userId: id,
     body: { phone: p, code: code.trim(), verification },
   })
   return saveCloudProfile(id, profile)
+}
+
+export async function recoverPassword(id: string, password: string, verification: Verification): Promise<void> {
+  if (!isCloudUser(id)) throw new Error(i18n.t('请使用已绑定的手机号或邮箱登录'))
+  const result = await request<{ ok: boolean }>('/me/password/recovery', {
+    method: 'PUT',
+    userId: id,
+    body: { password, verification },
+  })
+  if (result?.ok !== true) throw new Error(i18n.t('修改失败，请重试'))
+  if (currentUserId() === id) clearTokens()
 }
 
 export async function bindWechat(_id: string): Promise<Account> {

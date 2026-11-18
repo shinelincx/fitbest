@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { useTranslation } from 'react-i18next'
-import { Link, Navigate, useNavigate } from 'react-router-dom'
+import { Link, useLocation, useNavigate } from 'react-router-dom'
 import { LogOut, Shield, Trash2 } from 'lucide-react'
 import ContactVerification from '../../components/ContactVerification'
 import PageHeader from '../../components/PageHeader'
@@ -13,8 +13,9 @@ const inputCls =
 
 export default function Security() {
   const { t } = useTranslation()
-  const { user, changePassword, setPassword, logout, deleteAccount } = useAuth()
+  const { user, changePassword, setPassword, recoverPassword, logout, deleteAccount } = useAuth()
   const navigate = useNavigate()
+  const location = useLocation()
   const toast = useToast()
 
   const [oldPw, setOldPw] = useState('')
@@ -23,6 +24,7 @@ export default function Security() {
   const [pwError, setPwError] = useState('')
   const [pwSaving, setPwSaving] = useState(false)
   const [passwordVerification, setPasswordVerification] = useState<Verification>()
+  const [recovering, setRecovering] = useState(location.state?.recovery === true)
 
   const [confirmLogout, setConfirmLogout] = useState(false)
   const [deleteOpen, setDeleteOpen] = useState(false)
@@ -31,20 +33,25 @@ export default function Security() {
   const [deleteSaving, setDeleteSaving] = useState(false)
   const [deleteVerification, setDeleteVerification] = useState<Verification>()
 
-  if (!user) return <Navigate to={deleteSaving ? '/' : '/login'} replace />
+  if (!user) return null
   const cloud = isCloudAccount()
+  const useVerification = cloud && (!user.passwordHash || recovering)
 
   async function handleChangePassword() {
     if (pwSaving) return
     if (newPw.length < 6) return setPwError(t('新密码至少 6 位'))
     if (newPw !== confirmPw) return setPwError(t('两次输入的新密码不一致'))
-    if (cloud && !user?.passwordHash && passwordVerification?.code.length !== 6) {
+    if (useVerification && passwordVerification?.code.length !== 6) {
       return setPwError(t('请先验证已有登录方式'))
     }
     setPwSaving(true)
     setPwError('')
     try {
-      if (user?.passwordHash) {
+      if (cloud && recovering && user?.passwordHash && passwordVerification) {
+        await recoverPassword(newPw, passwordVerification)
+        toast(t('密码已重设，请重新登录'))
+        navigate('/login', { replace: true, state: { returnTo: '/profile/security' } })
+      } else if (user?.passwordHash) {
         await changePassword(oldPw, newPw)
         toast(t('密码已更新'))
       } else {
@@ -77,6 +84,7 @@ export default function Security() {
       return setDeleteError(err instanceof Error ? err.message : t('注销失败，请重试'))
     }
     toast(t('账号已注销'))
+    navigate('/', { replace: true })
   }
 
   return (
@@ -104,11 +112,11 @@ export default function Security() {
         </Link>
       </section>
 
-      {user.phone && (
+      {user.phone && !deleteOpen && (
         <section className="mb-5 rounded-md border border-border bg-surface p-4">
-          <p className="text-sm font-semibold">{user.passwordHash ? t('修改密码') : t('设置密码')}</p>
+          <h2 className="text-sm font-semibold">{user.passwordHash ? t(recovering ? '重设密码' : '修改密码') : t('设置密码')}</h2>
           <div className="mt-3 space-y-3">
-            {user.passwordHash && (
+            {user.passwordHash && !recovering && (
               <label className="block">
                 <span className="text-[13px] text-text-sub">{t('原密码')}</span>
                 <input type="password" autoComplete="current-password" value={oldPw} onChange={(e) => setOldPw(e.target.value)} className={inputCls} />
@@ -122,8 +130,8 @@ export default function Security() {
               <span className="text-[13px] text-text-sub">{t('确认新密码')}</span>
               <input type="password" autoComplete="new-password" maxLength={32} value={confirmPw} onChange={(e) => setConfirmPw(e.target.value)} className={inputCls} />
             </label>
-            {cloud && !user.passwordHash && (
-              <ContactVerification user={user} value={passwordVerification} onChange={setPasswordVerification} disabled={pwSaving} />
+            {useVerification && (
+              <ContactVerification key={String(recovering)} user={user} value={passwordVerification} onChange={setPasswordVerification} disabled={pwSaving} />
             )}
             {pwError && <p role="alert" className="text-[13px] text-danger">{t(pwError)}</p>}
             <button
@@ -131,11 +139,19 @@ export default function Security() {
               disabled={pwSaving}
               className="w-full rounded-md bg-text py-3.5 text-sm font-semibold text-bg disabled:opacity-60"
             >
-              {user.passwordHash ? t('保存新密码') : t('设置密码')}
+              {user.passwordHash ? t(recovering ? '确认重设密码' : '保存新密码') : t('设置密码')}
             </button>
+            {cloud && user.passwordHash && <button type="button" disabled={pwSaving} className="min-h-9 text-[13px] underline"
+              onClick={() => { setRecovering((value) => !value); setOldPw(''); setPasswordVerification(undefined); setPwError('') }}>
+              {t(recovering ? '返回修改密码' : '忘记原密码')}
+            </button>}
           </div>
         </section>
       )}
+      {recovering && !user.phone && <p className="mb-4 text-sm text-text-sub">
+        {t('手机号密码登录需要绑定手机号。')}{' '}
+        <Link to="/profile/identities" className="underline">{t('查看登录方式')}</Link>
+      </p>}
 
       <section className="mb-5 overflow-hidden rounded-md border border-border bg-surface">
         {!confirmLogout ? (

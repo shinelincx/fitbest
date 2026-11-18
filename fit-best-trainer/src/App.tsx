@@ -1,5 +1,6 @@
 import { Routes, Route, Navigate, useLocation } from 'react-router-dom'
 import type { ReactNode } from 'react'
+import { useTranslation } from 'react-i18next'
 import Layout from './components/Layout'
 import { ToastProvider } from './components/Toast'
 import { AuthProvider, useAuth } from './context/AuthContext'
@@ -13,6 +14,7 @@ import EditProfile from './pages/profile/EditProfile'
 import Security from './pages/profile/Security'
 import Notifications from './pages/profile/Notifications'
 import Settings from './pages/profile/Settings'
+import Install from './pages/profile/Install'
 import Identities from './pages/profile/Identities'
 import Data from './pages/profile/Data'
 import About from './pages/profile/About'
@@ -25,8 +27,10 @@ import Discover from './pages/Discover'
 import { isNative } from './platform/runtime'
 
 function AccountPage({ children }: { children: ReactNode }) {
-  const { user } = useAuth()
+  const { user, authPending } = useAuth()
+  const { t } = useTranslation()
   const { pathname } = useLocation()
+  if (authPending) return <p role="status" className="px-5 py-6 text-sm text-text-sub">{t('正在恢复登录…')}</p>
   if (!user) return <Navigate to="/login" replace state={{ returnTo: loginReturn(pathname) }} />
   return children
 }
@@ -54,6 +58,7 @@ export default function App() {
               element={isNative ? <Navigate to="/profile/settings" replace /> : <AccountPage><Security /></AccountPage>}
             />
             <Route path="/profile/settings" element={<Settings />} />
+            <Route path="/profile/install" element={isNative ? <Navigate to="/profile/settings" replace /> : <Install />} />
             <Route
               path="/profile/identities"
               element={isNative ? <Navigate to="/profile/settings" replace /> : <AccountPage><Identities /></AccountPage>}

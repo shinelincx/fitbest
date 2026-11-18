@@ -45,13 +45,13 @@ public class AuthController {
     public record SmsLoginBody(
         @Pattern(regexp = "^1[3-9]\\d{9}$", message = "手机号格式不正确") String phone,
         @Pattern(regexp = "^\\d{6}$", message = "验证码应为 6 位数字") String code,
-        @Size(max = 120) String device) {
+        @Size(max = 120) String device, boolean existingOnly) {
     }
 
     public record EmailLoginBody(
         @Email(message = "邮箱格式不正确") String email,
         @Pattern(regexp = "^\\d{6}$", message = "验证码应为 6 位数字") String code,
-        @Size(max = 120) String device) {
+        @Size(max = 120) String device, boolean existingOnly) {
     }
 
     public record PasswordLoginBody(
@@ -101,12 +101,12 @@ public class AuthController {
 
     @PostMapping("sms/login")
     public Map<String, Object> smsLogin(@Valid @RequestBody SmsLoginBody body, HttpServletRequest request) {
-        return auth.loginWithSms(body.phone(), body.code(), body.device(), AuthService.clientIp(request));
+        return auth.loginWithSms(body.phone(), body.code(), body.device(), AuthService.clientIp(request), body.existingOnly());
     }
 
     @PostMapping("email/login")
     public Map<String, Object> emailLogin(@Valid @RequestBody EmailLoginBody body, HttpServletRequest request) {
-        return auth.loginWithEmail(body.email(), body.code(), body.device(), AuthService.clientIp(request));
+        return auth.loginWithEmail(body.email(), body.code(), body.device(), AuthService.clientIp(request), body.existingOnly());
     }
 
     @PostMapping("password/login")

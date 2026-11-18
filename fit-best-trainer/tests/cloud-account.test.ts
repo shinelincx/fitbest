@@ -1,7 +1,7 @@
 import { afterEach, beforeEach, expect, it, vi } from 'vitest'
 import {
   bindEmail, bindPhone, changePassword, currentUserId, deleteAccount, getSessionUser,
-  loginWithSms, sendEmailCode, sendSmsCode, setPassword, unbindEmail, updateAccount,
+  loginWithSms, restoreSharedSession, sendEmailCode, sendSmsCode, setPassword, unbindEmail, updateAccount,
 } from '../src/utils/auth'
 
 vi.mock('../src/i18n', () => ({ default: { t: (text: string) => text } }))
@@ -72,6 +72,17 @@ it('清空显式选中的资料字段，留存其他资料和目标', async () =
   const saved = await updateAccount(user.id, { clear: ['heightCm'] })
   expectRequest('/me', 'PATCH', { clear: ['heightCm'] })
   expect(saved).toMatchObject({ heightCm: undefined, weightKg: 72, goalSessions: 2, goalMinutes: 60 })
+})
+
+it('赛事端切换凭证时隐藏旧账号并恢复新凭证对应的资料', async () => {
+  await signIn()
+  localStorage.setItem('fitbest:session', JSON.stringify('account-b'))
+  localStorage.setItem('fitbest:access', `header.${btoa(JSON.stringify({ sub: 'account-b' }))}.signature`)
+  expect(getSessionUser()).toBeNull()
+  transport.mockResolvedValueOnce(json({ ...profile, id: 'account-b', nickname: '另一个账号' }))
+  expect((await restoreSharedSession())?.id).toBe('account-b')
+  expectRequest('/me', 'GET')
+  expect(getSessionUser()).toMatchObject({ id: 'account-b', nickname: '另一个账号' })
 })
 
 it('云端发码区分登录和绑定，账号可以绑定邮箱、手机号和解绑邮箱', async () => {

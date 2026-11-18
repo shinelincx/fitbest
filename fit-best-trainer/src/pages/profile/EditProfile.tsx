@@ -141,8 +141,10 @@ function EditDetails({ user }: { user: Account }) {
         continue
       }
       const value = Number(raw)
-      if (!Number.isFinite(value) || value < min || value > max || (integer && !Number.isInteger(value))) {
-        return setError({ field: id, message: t('{{label}}需填写 {{min}}–{{max}} 范围内的数值', { label: t(label), min, max }) })
+      const exact = integer ? Number.isInteger(value) : Number(value.toFixed(1)) === value
+      if (!Number.isFinite(value) || value < min || value > max || !exact) {
+        return setError({ field: id, message: t(integer ? '{{label}}需填写 {{min}}–{{max}} 范围内的整数'
+          : '{{label}}需填写 {{min}}–{{max}} 范围内的数值，最多一位小数', { label: t(label), min, max }) })
       }
       patch[id] = value
     }

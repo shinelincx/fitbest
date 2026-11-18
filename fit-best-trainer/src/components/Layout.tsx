@@ -4,6 +4,7 @@ import { Activity, BarChart3, Dumbbell, Home, Radar, User } from 'lucide-react'
 import { Link } from 'react-router-dom'
 import { useAuth } from '../context/AuthContext'
 import { loginReturn } from '../utils/loginReturn'
+import { updateFitbest, usePwa } from '../platform/pwa'
 
 // 是否 HD 平板版（由 .env.hd 的 VITE_BUILD=hd 决定）
 const IS_HD = import.meta.env.VITE_BUILD === 'hd'
@@ -29,6 +30,7 @@ export default function Layout() {
   const { t } = useTranslation()
   const { pathname } = useLocation()
   const { sessionExpired } = useAuth()
+  const { update } = usePwa()
   // 训练页全屏沉浸：隐藏所有导航
   const isTraining = pathname.startsWith('/train') || /^\/pin(\/|$)/.test(pathname)
   const isAuth = pathname.startsWith('/login') || pathname.startsWith('/register')
@@ -59,6 +61,14 @@ export default function Layout() {
             <div role="status" className="mx-5 mt-3 rounded-md border border-border bg-surface px-3 py-2 text-[13px]">
               {t('登录已失效，本机记录和待同步训练已保留。')}{' '}
               <Link to="/login" state={{ returnTo: loginReturn(pathname) }} className="font-semibold underline">{t('重新登录')}</Link>
+            </div>
+          )}
+          {update && (pathname === '/' || pathname === '/profile/settings') && (
+            <div role="status" className="mx-5 mt-3 flex flex-wrap items-center justify-between gap-2 rounded-md border border-border bg-surface px-3 py-2 text-[13px]">
+              {t('Fitbest 有新版可用')}
+              <button type="button" onClick={updateFitbest} className="min-h-9 rounded-md border border-border px-3 font-semibold">
+                {t('更新并重新打开')}
+              </button>
             </div>
           )}
           <Outlet />

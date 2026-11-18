@@ -1,6 +1,6 @@
 import { createContext, useContext, useEffect, useState, type ReactNode } from 'react'
 import { flushMachineSessions } from '../api'
-import { hasAccessFor, SESSION_TOKEN_EVENT } from '../api/client'
+import { getAccessUserId, hasAccessFor, SESSION_TOKEN_EVENT } from '../api/client'
 import {
   bindEmail as bindEmailApi,
   bindPhone as bindPhoneApi,
@@ -16,6 +16,8 @@ import {
   loginWithWechat as loginWithWechatApi,
   loginWithWechatPhone as loginWithWechatPhoneApi,
   logoutAccount,
+  recoverPassword as recoverPasswordApi,
+  restoreSharedSession,
   registerAccount,
   setPassword as setPasswordApi,
   unbindEmail as unbindEmailApi,
@@ -30,14 +32,15 @@ import { isNative } from '../platform/runtime'
 interface AuthValue {
   user: Account | null
   sessionExpired: boolean
+  authPending: boolean
   login: (phone: string, password: string) => Promise<void>
   register: (input: { phone: string; password: string; nickname: string }) => Promise<void>
-  loginWithSms: (phone: string, code: string) => Promise<void>
-  loginWithEmail: (email: string, code: string) => Promise<void>
+  loginWithSms: (phone: string, code: string, existingOnly?: boolean) => Promise<void>
+  loginWithEmail: (email: string, code: string, existingOnly?: boolean) => Promise<void>
   loginWithWechat: () => Promise<Account | null>
   loginWithWechatPhone: (phone: string, code: string) => Promise<void>
   bindEmail: (email: string, code: string, verification?: Verification) => Promise<void>
-  bindPhone: (phone: string, code: string, verification?: Verification) => Promise<void>
+  bindPhone: (phone: string, code: string, verification?: Verification, replace?: boolean) => Promise<void>
   bindWechat: () => Promise<void>
   unbindEmail: (verification?: Verification) => Promise<void>
   unbindWechat: () => Promise<void>
@@ -45,6 +48,7 @@ interface AuthValue {
   updateProfile: (patch: ProfilePatch) => Promise<void>
   changePassword: (oldPassword: string, newPassword: string) => Promise<void>
   setPassword: (newPassword: string, verification?: Verification) => Promise<void>
+  recoverPassword: (password: string, verification: Verification) => Promise<void>
   deleteAccount: (password?: string, verification?: Verification) => Promise<void>
 }
 
@@ -55,19 +59,39 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     isNative ? getLocalGuestAccount() : getSessionUser(),
   )
   const [tokenChange, setTokenChange] = useState(0)
+  const [authPending, setAuthPending] = useState(() => !isNative && Boolean(getAccessUserId()) && !getSessionUser())
   const sessionExpired = !isNative && user !== null && isCloudAccount() && !hasAccessFor(user.id)
 
   useEffect(() => {
     if (isNative) return
+    let generation = 0
     const refresh = () => setTokenChange((value) => value + 1)
+    async function restore() {
+      const version = ++generation
+      const local = getSessionUser()
+      setUser(local)
+      setAuthPending(!local && Boolean(getAccessUserId()))
+      if (!local && getAccessUserId()) {
+        try {
+          const restored = await restoreSharedSession()
+          if (version === generation) setUser(restored)
+        } catch {
+          // 恢复失败时停留在游客模式，可手动登录。
+        } finally {
+          if (version === generation) setAuthPending(false)
+        }
+      }
+    }
     const crossTab = (event: StorageEvent) => {
       if (event.storageArea !== localStorage || (event.key && !['fitbest:access', 'fitbest:session', 'fitbest:cloud-account'].includes(event.key))) return
-      setUser(getSessionUser())
+      void restore()
       refresh()
     }
     window.addEventListener(SESSION_TOKEN_EVENT, refresh)
     window.addEventListener('storage', crossTab)
+    void restore()
     return () => {
+      generation++
       window.removeEventListener(SESSION_TOKEN_EVENT, refresh)
       window.removeEventListener('storage', crossTab)
     }
@@ -85,12 +109,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     setUser(await registerAccount(input))
   }
 
-  async function loginWithSms(phone: string, code: string) {
-    setUser(await loginWithSmsApi(phone, code))
+  async function loginWithSms(phone: string, code: string, existingOnly?: boolean) {
+    setUser(await loginWithSmsApi(phone, code, existingOnly))
   }
 
-  async function loginWithEmail(email: string, code: string) {
-    setUser(await loginWithEmailApi(email, code))
+  async function loginWithEmail(email: string, code: string, existingOnly?: boolean) {
+    setUser(await loginWithEmailApi(email, code, existingOnly))
   }
 
   async function loginWithWechat() {
@@ -108,9 +132,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     setUser(await bindEmailApi(user.id, email, code, verification))
   }
 
-  async function bindPhone(phone: string, code: string, verification?: Verification) {
+  async function bindPhone(phone: string, code: string, verification?: Verification, replace?: boolean) {
     if (!user) throw new Error('请先登录')
-    setUser(await bindPhoneApi(user.id, phone, code, verification))
+    setUser(await bindPhoneApi(user.id, phone, code, verification, replace))
   }
 
   async function bindWechat() {
@@ -154,11 +178,17 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     setUser(null)
   }
 
+  async function recoverPassword(password: string, verification: Verification) {
+    if (!user) throw new Error('请先登录')
+    await recoverPasswordApi(user.id, password, verification)
+  }
+
   return (
     <AuthContext.Provider
       value={{
         user,
         sessionExpired,
+        authPending,
         login,
         register,
         loginWithSms,
@@ -174,6 +204,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         updateProfile,
         changePassword,
         setPassword,
+        recoverPassword,
         deleteAccount,
       }}
     >

@@ -1,7 +1,8 @@
 import { useEffect, useState } from 'react'
 import { fetchSessions, fetchStrengthSessions, subscribeToMachineSessions } from '../api'
 import type { MachineSession, StrengthSession } from '../types'
-import { ACTIVITY_KEY, readActivity, type ActivityEntry } from '../utils/activity'
+import { ACTIVITY_KEY, fetchActivity, type ActivityEntry } from '../utils/activity'
+import { isCloudAccount } from '../utils/auth'
 import { summarizeTraining } from '../utils/trainingOverview'
 
 type Snapshot = {
@@ -21,29 +22,33 @@ export function useTrainingOverview(owner: string | null, sessionExpired = false
   useEffect(() => {
     let generation = 0
     let active = true
+    let controller: AbortController | undefined
     async function refresh() {
       const request = ++generation
+      controller?.abort()
+      controller = new AbortController()
       setTime(new Date())
       setOnline(navigator.onLine)
       let failed = false
-      const [cardio, weights] = await Promise.allSettled([
+      const [cardio, weights, race] = await Promise.allSettled([
         fetchSessions({ onCloudError: () => { failed = true } }),
         fetchStrengthSessions(owner),
+        fetchActivity(owner ?? 'guest', isCloudAccount(), controller.signal),
       ])
       if (!active || request !== generation) return
       setSnapshot({
         owner,
         sessions: cardio.status === 'fulfilled' ? cardio.value : [],
         strength: weights.status === 'fulfilled' ? weights.value : [],
-        activity: readActivity().filter((entry) => entry.uid === (owner ?? 'guest')),
-        failed: failed || cardio.status === 'rejected' || weights.status === 'rejected',
+        activity: race.status === 'fulfilled' ? race.value.items : [],
+        failed: failed || cardio.status === 'rejected' || weights.status === 'rejected' || race.status === 'rejected' || race.value.failed,
       })
       setTime(new Date())
     }
 
     const onVisible = () => { if (document.visibilityState === 'visible') void refresh() }
     const onStorage = (event: StorageEvent) => {
-      if (event.key === null || event.key === ACTIVITY_KEY || event.key.startsWith('fitbest:sessions:') || event.key.startsWith('fitbest:strength:')) void refresh()
+      if (event.key === null || event.key === ACTIVITY_KEY || /^(fitbest:(sessions|strength)|(hyrox|btwe):(sessions|record-outbox|record-deletions)):/.test(event.key)) void refresh()
     }
     const unsubscribe = subscribeToMachineSessions(() => void refresh())
     window.addEventListener('online', refresh)
@@ -54,6 +59,7 @@ export function useTrainingOverview(owner: string | null, sessionExpired = false
     void refresh()
     return () => {
       active = false
+      controller?.abort()
       unsubscribe()
       window.removeEventListener('online', refresh)
       window.removeEventListener('offline', refresh)

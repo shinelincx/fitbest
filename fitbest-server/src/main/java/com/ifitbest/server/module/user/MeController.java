@@ -18,6 +18,7 @@ import org.springframework.web.bind.annotation.RestController;
 
 import com.ifitbest.server.common.auth.Authed;
 import com.ifitbest.server.common.auth.CurrentUser;
+import com.ifitbest.server.common.error.BizException;
 import com.ifitbest.server.infra.persistence.IdentityType;
 import com.ifitbest.server.module.user.UsersService.Verification;
 
@@ -52,15 +53,15 @@ public class MeController {
         @Size(min = 1, max = 20, message = "昵称不能为空") String nickname,
         @Size(max = 64 * 1024) String avatar,
         @Pattern(regexp = "male|female|other") String gender,
-        @Min(1900) @Max(value = 2100) Integer birthYear,
+        @Min(1900) @Max(value = 2100) BigDecimal birthYear,
         @DecimalMin("50") @DecimalMax("250") BigDecimal heightCm,
         @DecimalMin("20") @DecimalMax("300") BigDecimal weightKg,
         Set<@NotNull ProfileField> clear) {
     }
 
     public record GoalsBody(
-        @Min(0) @Max(100) Integer weeklySessions,
-        @Min(0) @Max(10000) Integer weeklyMinutes) {
+        @Min(0) @Max(100) BigDecimal weeklySessions,
+        @Min(0) @Max(10000) BigDecimal weeklyMinutes) {
     }
 
     public record BindPhoneBody(
@@ -89,6 +90,11 @@ public class MeController {
         @Valid Verification verification) {
     }
 
+    public record RecoveryBody(
+        @NotBlank @Size(min = 6, max = 32, message = "密码长度为 6 至 32 位") String password,
+        @NotNull @Valid Verification verification) {
+    }
+
     public record SecurityCodeBody(@NotNull IdentityType channel) {
     }
 
@@ -107,12 +113,29 @@ public class MeController {
     @PatchMapping
     public Map<String, Object> updateMe(@CurrentUser UUID userId, @Valid @RequestBody UpdateMeBody body) {
         return users.updateMe(userId, body.nickname(), body.avatar(), body.gender(),
-            body.birthYear(), body.heightCm(), body.weightKg(), body.clear() == null ? Set.of() : body.clear());
+            wholeNumber(body.birthYear()), oneDecimal(body.heightCm()), oneDecimal(body.weightKg()),
+            body.clear() == null ? Set.of() : body.clear());
     }
 
     @PatchMapping("goals")
     public Map<String, Object> updateGoals(@CurrentUser UUID userId, @Valid @RequestBody GoalsBody body) {
-        return users.updateGoals(userId, body.weeklySessions(), body.weeklyMinutes());
+        return users.updateGoals(userId, wholeNumber(body.weeklySessions()), wholeNumber(body.weeklyMinutes()));
+    }
+
+    private static Integer wholeNumber(BigDecimal value) {
+        if (value == null) return null;
+        try {
+            return value.intValueExact();
+        } catch (ArithmeticException e) {
+            throw BizException.badRequest("请填写整数");
+        }
+    }
+
+    private static BigDecimal oneDecimal(BigDecimal value) {
+        if (value != null && value.stripTrailingZeros().scale() > 1) {
+            throw BizException.badRequest("身高和体重最多保留一位小数");
+        }
+        return value;
     }
 
     @GetMapping("identities")
@@ -123,6 +146,11 @@ public class MeController {
     @PostMapping("identities/phone")
     public Map<String, Object> bindPhone(@CurrentUser UUID userId, @Valid @RequestBody BindPhoneBody body) {
         return users.bindPhone(userId, body.phone(), body.code(), body.verification());
+    }
+
+    @PutMapping("identities/phone")
+    public Map<String, Object> replacePhone(@CurrentUser UUID userId, @Valid @RequestBody BindPhoneBody body) {
+        return users.replacePhone(userId, body.phone(), body.code(), body.verification());
     }
 
     @PostMapping("identities/email")
@@ -144,6 +172,11 @@ public class MeController {
     @PutMapping("password")
     public Map<String, Object> setPassword(@CurrentUser UUID userId, @Valid @RequestBody PasswordBody body) {
         return users.setPassword(userId, body.password(), body.oldPassword(), body.verification());
+    }
+
+    @PutMapping("password/recovery")
+    public Map<String, Object> recoverPassword(@CurrentUser UUID userId, @Valid @RequestBody RecoveryBody body) {
+        return users.recoverPassword(userId, body.password(), body.verification());
     }
 
     @DeleteMapping

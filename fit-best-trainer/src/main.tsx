@@ -6,6 +6,9 @@ import './i18n'
 import App from './App'
 import { DeviceProvider } from './context/DeviceContext'
 import NativeRuntime from './platform/NativeRuntime'
+import { initPwa } from './platform/pwa'
+
+initPwa()
 
 createRoot(document.getElementById('root')!).render(
   <StrictMode>

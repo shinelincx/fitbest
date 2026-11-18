@@ -24,6 +24,7 @@ export default function AuthPage({ mode }: { mode: 'login' | 'register' }) {
   const navigate = useNavigate()
   const location = useLocation()
   const returnTo = loginReturn(location.state?.returnTo)
+  const recovery = location.state?.recovery === true
   const toast = useToast()
   const {
     login,
@@ -53,9 +54,20 @@ export default function AuthPage({ mode }: { mode: 'login' | 'register' }) {
   const [agreed, setAgreed] = useState(false)
   const [busy, setBusy] = useState(false)
   const [sending, setSending] = useState(false)
+  const [online, setOnline] = useState(() => navigator.onLine)
   const [error, setError] = useState('')
   const [errorField, setErrorField] = useState('')
   const [sent, setSent] = useState<{ channel: 'phone' | 'email'; target: string; expiresIn?: number }>()
+
+  useEffect(() => {
+    const update = () => setOnline(navigator.onLine)
+    window.addEventListener('online', update)
+    window.addEventListener('offline', update)
+    return () => {
+      window.removeEventListener('online', update)
+      window.removeEventListener('offline', update)
+    }
+  }, [])
 
   function showError(message: string, field = '') {
     setError(message)
@@ -73,7 +85,7 @@ export default function AuthPage({ mode }: { mode: 'login' | 'register' }) {
     'mt-1.5 w-full rounded-md border border-border bg-surface px-4 py-3 text-sm text-text outline-none transition-colors placeholder:text-text-sub/50 focus:border-text'
 
   async function sendSms(target: string, setLeft: (n: number) => void) {
-    if (sending || busy) return
+    if (sending || busy || !online) return
     setSending(true)
     try {
       const { devCode: code, cooldown, expiresIn } = await sendSmsCode(target)
@@ -90,7 +102,7 @@ export default function AuthPage({ mode }: { mode: 'login' | 'register' }) {
   }
 
   async function sendEmail(target: string) {
-    if (sending || busy) return
+    if (sending || busy || !online) return
     setSending(true)
     try {
       const { devCode: code, cooldown, expiresIn } = await sendEmailCode(target)
@@ -108,7 +120,7 @@ export default function AuthPage({ mode }: { mode: 'login' | 'register' }) {
 
   async function handleSubmit(e: FormEvent) {
     e.preventDefault()
-    if (busy || sending) return
+    if (busy || sending || !online) return
     if (!agreed) {
       showError(t('请先阅读并同意用户协议与隐私政策'), 'auth-agreement')
       return
@@ -123,7 +135,7 @@ export default function AuthPage({ mode }: { mode: 'login' | 'register' }) {
         if (phoneMode === 'code') {
           field = 'sms-code'
           if (smsCode.length !== 6) throw new Error(t('请输入 6 位验证码'))
-          await loginWithSms(phone, smsCode)
+          await loginWithSms(phone, smsCode, recovery || undefined)
           toast(t('登录成功'))
         } else {
           field = 'password'
@@ -136,7 +148,7 @@ export default function AuthPage({ mode }: { mode: 'login' | 'register' }) {
         if (!EMAIL_RE.test(email.trim())) throw new Error(t('请输入正确的邮箱地址'))
         field = 'email-code'
         if (emailCode.length !== 6) throw new Error(t('请输入 6 位验证码'))
-        await loginWithEmail(email, emailCode)
+        await loginWithEmail(email, emailCode, recovery || undefined)
         toast(t('登录成功'))
       } else if (wechatStep === 'new') {
         if (!PHONE_RE.test(wxPhone.trim())) throw new Error(t('请输入正确的 11 位手机号'))
@@ -144,7 +156,7 @@ export default function AuthPage({ mode }: { mode: 'login' | 'register' }) {
         await loginWithWechatPhone(wxPhone, wxCode)
         toast(t('微信登录成功'))
       }
-      navigate(returnTo, { replace: true })
+      navigate(recovery ? '/profile/security' : returnTo, { replace: true, state: recovery ? { recovery: true } : undefined })
     } catch (err) {
       showError(err instanceof Error ? err.message : t('操作失败，请重试'), field)
     } finally {
@@ -200,13 +212,13 @@ export default function AuthPage({ mode }: { mode: 'login' | 'register' }) {
       <div className="reveal reveal-1 mt-8 flex items-center gap-3">
         <img src="./logo.png" alt="FITBEST" className="h-[60px] w-[60px] shrink-0 rounded-full object-contain" />
         <div className="min-w-0">
-          <h1 className="font-display text-2xl font-bold">{mode === 'register' ? t('注册') : t('登录')}</h1>
+          <h1 className="font-display text-2xl font-bold">{recovery ? t('找回密码') : mode === 'register' ? t('注册') : t('登录')}</h1>
           <p className="mt-0.5 text-xs text-text-sub">{t('一个账号，手机号、邮箱或微信都能登录')}</p>
         </div>
       </div>
 
       <div className="reveal reveal-2 mt-6 grid grid-cols-3 gap-1 rounded-md border border-border bg-surface p-1">
-        {tabs.map((tabItem) => (
+        {tabs.filter((item) => !recovery || item.key !== 'wechat').map((tabItem) => (
           <button
             key={tabItem.key}
             type="button"
@@ -226,9 +238,12 @@ export default function AuthPage({ mode }: { mode: 'login' | 'register' }) {
       </div>
 
       <form className="reveal reveal-2 mt-5" onSubmit={handleSubmit} noValidate>
+        {!online && <p role="status" className="mb-3 rounded-md border border-border bg-surface p-3 text-[13px] text-text-sub">
+          {t('登录和发送验证码需要联网。恢复网络后可以继续。')}
+        </p>}
         {tab === 'phone' && (
           <>
-            <div className="mb-4 flex gap-4 border-b border-border">
+            {!recovery && <div className="mb-4 flex gap-4 border-b border-border">
               {[
                 { key: 'code' as const, label: '验证码登录' },
                 { key: 'password' as const, label: '密码登录' },
@@ -246,7 +261,7 @@ export default function AuthPage({ mode }: { mode: 'login' | 'register' }) {
                   {t(m.label)}
                 </button>
               ))}
-            </div>
+            </div>}
 
             <label className="mb-4 block">
               <span className="text-[14px] text-text-sub">{t('手机号')}</span>
@@ -279,7 +294,7 @@ export default function AuthPage({ mode }: { mode: 'login' | 'register' }) {
                   />
                   <button
                     type="button"
-                    disabled={busy || sending || (smsLeft > 0 && sent?.target === phone)}
+                    disabled={!online || busy || sending || (smsLeft > 0 && sent?.target === phone)}
                     onClick={() => sendSms(phone.trim(), setSmsLeft)}
                     className={`mt-1.5 shrink-0 rounded-md border border-border px-3 text-[14px] font-medium disabled:opacity-50 ${
                       smsLeft > 0 ? 'text-text-sub' : 'bg-surface-2 text-text'
@@ -347,7 +362,7 @@ export default function AuthPage({ mode }: { mode: 'login' | 'register' }) {
                 />
                 <button
                   type="button"
-                  disabled={busy || sending || (emailLeft > 0 && sent?.target === normalizeEmail(email))}
+                  disabled={!online || busy || sending || (emailLeft > 0 && sent?.target === normalizeEmail(email))}
                   onClick={() => sendEmail(email)}
                   className={`mt-1.5 shrink-0 rounded-md border border-border px-3 text-[14px] font-medium disabled:opacity-50 ${
                     emailLeft > 0 ? 'text-text-sub' : 'bg-surface-2 text-text'
@@ -437,8 +452,18 @@ export default function AuthPage({ mode }: { mode: 'login' | 'register' }) {
             : t('已发送至 {{target}}。可编辑上方联系方式。', { target: sentTo }))}
         </div>
         {(tab === 'email' || (tab === 'phone' && phoneMode === 'code')) && (
-          <p className="mt-2 text-[13px] text-text-sub">{t('首次验证此联系方式会创建账号。游客训练记录会保留在本机的游客空间。')}</p>
+          <p className="mt-2 text-[13px] text-text-sub">{recovery
+            ? t('请使用原账号已绑定的手机号或邮箱验证。找回密码流程仅用于已有账号。')
+            : t('首次验证此联系方式会创建账号。游客训练记录会保留在本机的游客空间。')}</p>
         )}
+        {!recovery && tab === 'phone' && phoneMode === 'password' && (
+          <Link to="/login" state={{ recovery: true }} onClick={() => { setPhoneMode('code'); setPassword(''); setError('') }}
+            className="mt-3 inline-flex min-h-9 items-center text-[13px] underline">{t('忘记密码')}</Link>
+        )}
+        {recovery && <p className="mt-2 text-[13px] text-text-sub">
+          {t('无法使用已绑定的手机号和邮箱？')}{' '}
+          <a href="/fitbestwebsite/#contact" target="_blank" rel="noopener" className="underline">{t('联系支持')}</a>
+        </p>}
         <div id="auth-error" role="alert" className="mt-3 text-[14px] text-danger">{error && t(error)}</div>
 
         <label className="mt-4 flex items-start gap-2 text-[13px] text-text-sub">
@@ -464,7 +489,7 @@ export default function AuthPage({ mode }: { mode: 'login' | 'register' }) {
         {(tab !== 'wechat' || wechatStep === 'new') && (
           <button
             type="submit"
-            disabled={busy || sending}
+            disabled={!online || busy || sending}
             className="mt-5 flex w-full items-center justify-center gap-2 rounded-md bg-text py-3.5 text-sm font-bold text-bg transition-transform active:scale-[0.98] disabled:opacity-60"
           >
             {busy && <Loader2 size={16} className="animate-spin" />}

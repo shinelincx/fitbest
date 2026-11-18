@@ -241,7 +241,7 @@ export default function Home() {
       <section className="reveal reveal-3 mt-3">
         <h2 className="font-display text-[20px] font-bold leading-tight">{t('赛事训练')}</h2>
         <div className="mt-2.5 grid grid-cols-2 gap-3">
-          {EXTERNAL_APPS.map((app) => (
+          {EXTERNAL_APPS.map((app) => overview.online ? (
             <a
               key={app.id}
               href={IS_HD ? `${app.href}HD/` : app.href}
@@ -264,6 +264,11 @@ export default function Home() {
                 {t(app.subtitle)}
               </p>
             </a>
+          ) : (
+            <div key={app.id} className="rounded-md border border-border bg-surface p-4 text-text-sub">
+              <p className="font-display text-base font-bold">{app.name}</p>
+              <p className="mt-1 text-[13px]">{t('联网后打开赛事应用')}</p>
+            </div>
           ))}
         </div>
       </section>

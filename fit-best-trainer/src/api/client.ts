@@ -59,8 +59,12 @@ function tokenUserId(token: string | null): string | null {
   }
 }
 
+export function getAccessUserId(): string | null {
+  return tokenUserId(getAccessToken())
+}
+
 export function hasAccessFor(userId: string): boolean {
-  return tokenUserId(getAccessToken()) === userId
+  return getAccessUserId() === userId
 }
 
 let pendingRefresh: { refresh: string; result: Promise<string | null> } | undefined

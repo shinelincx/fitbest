@@ -273,21 +273,29 @@ public class AuthService {
     }
 
     @Transactional
-    public Map<String, Object> loginWithSms(String phone, String code, String device, String ip) {
+    public Map<String, Object> loginWithSms(String phone, String code, String device, String ip, boolean existingOnly) {
         codes.verify(RedisCodeService.Channel.sms, RedisCodeService.Scene.login, phone, code);
-        UserWithProfile user = ensureUser(IdentityType.phone, phone, "训练者" + phone.substring(phone.length() - 4));
+        UserWithProfile user = existingOnly ? requireAccount(IdentityType.phone, phone)
+            : ensureUser(IdentityType.phone, phone, "训练者" + phone.substring(phone.length() - 4));
         return finishLogin(user.user().getId(), device, ip);
     }
 
     @Transactional
-    public Map<String, Object> loginWithEmail(String emailAddr, String code, String device, String ip) {
+    public Map<String, Object> loginWithEmail(String emailAddr, String code, String device, String ip, boolean existingOnly) {
         codes.verify(RedisCodeService.Channel.email, RedisCodeService.Scene.login, emailAddr, code);
         String nickname = emailAddr.split("@")[0];
         if (nickname.isBlank()) {
             nickname = "训练者";
         }
-        UserWithProfile user = ensureUser(IdentityType.email, emailAddr, nickname);
+        UserWithProfile user = existingOnly ? requireAccount(IdentityType.email, emailAddr)
+            : ensureUser(IdentityType.email, emailAddr, nickname);
         return finishLogin(user.user().getId(), device, ip);
+    }
+
+    private UserWithProfile requireAccount(IdentityType type, String identifier) {
+        UserWithProfile user = findUser(type, identifier);
+        if (user == null) throw BizException.badRequest("此联系方式未绑定账号，请使用已绑定的手机号或邮箱");
+        return user;
     }
 
     @Transactional

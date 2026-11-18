@@ -51,6 +51,18 @@ export default function Identities() {
 
   const boundCount = [user.phone, user.email, user.wechatOpenid].filter(Boolean).length
   const cloud = isCloudAccount()
+  const replacing = cloud && binding === 'phone' && Boolean(user.phone)
+
+  function beginBinding(kind: 'phone' | 'email') {
+    setBinding(kind)
+    setConfirm(null)
+    setEmail('')
+    setPhone('')
+    setVerification(undefined)
+    setCode('')
+    setLeft(0)
+    setError('')
+  }
 
   async function sendCode() {
     if (sending) return
@@ -80,8 +92,8 @@ export default function Identities() {
         toast(t('邮箱已绑定'))
       } else {
         if (!PHONE_RE.test(phone.trim())) throw new Error(t('请输入正确的 11 位手机号'))
-        await bindPhone(phone, code, verification)
-        toast(t('手机号已绑定'))
+        await bindPhone(phone, code, verification, replacing)
+        toast(t(replacing ? '手机号已更换' : '手机号已绑定'))
       }
       setBinding(null)
       setEmail('')
@@ -129,20 +141,15 @@ export default function Identities() {
 
   function action(kind: IdentityKind, bound: boolean) {
     if (kind === 'phone') {
-      return bound ? (
+      return bound && !cloud ? (
         <span className="shrink-0 text-[13px] text-text-sub">{t('不可解绑')}</span>
       ) : (
         <button
-          onClick={() => {
-            setBinding('phone')
-            setConfirm(null)
-            setVerification(undefined)
-            setCode('')
-            setError('')
-          }}
-          className="shrink-0 rounded-full border border-border px-3 py-1 text-[13px] font-medium"
+          onClick={() => beginBinding('phone')}
+          disabled={sending || saving}
+          className="min-h-10 shrink-0 rounded-full border border-border px-3 py-1 text-[13px] font-medium"
         >
-          {t('绑定')}
+          {t(bound ? '更换手机号' : '绑定')}
         </button>
       )
     }
@@ -182,13 +189,8 @@ export default function Identities() {
       </button>
     ) : (
       <button
-        onClick={() => {
-          setBinding(kind === 'email' ? 'email' : 'phone')
-          setConfirm(null)
-          setVerification(undefined)
-          setCode('')
-          setError('')
-        }}
+        onClick={() => beginBinding('email')}
+        disabled={sending || saving}
         className="shrink-0 rounded-full border border-border px-3 py-1 text-[13px] font-medium"
       >
         {t('绑定')}
@@ -243,16 +245,19 @@ export default function Identities() {
 
       {binding && (
         <section className="mb-5 rounded-md border border-border bg-surface p-4">
-          <p className="text-sm font-semibold">{binding === 'email' ? t('绑定邮箱') : t('绑定手机号')}</p>
+          <h2 className="text-sm font-semibold">{t(replacing ? '更换手机号' : binding === 'email' ? '绑定邮箱' : '绑定手机号')}</h2>
+          {replacing && <p className="mt-2 text-[13px] text-text-sub">{t('先验证已绑定的手机号或邮箱，再验证新手机号。更换后仍使用当前账号和训练记录。')}</p>}
+          {cloud && <ContactVerification key={binding} user={user} value={verification} onChange={setVerification} disabled={saving} />}
           <label className="mt-3 block">
-            <span className="text-[13px] text-text-sub">{binding === 'email' ? t('邮箱') : t('手机号')}</span>
+            <span className="text-[13px] text-text-sub">{t(replacing ? '新手机号' : binding === 'email' ? '邮箱' : '手机号')}</span>
             <input
               value={binding === 'email' ? email : phone}
-              onChange={(e) =>
-                binding === 'email'
-                  ? setEmail(e.target.value)
-                  : setPhone(e.target.value.replace(/\D/g, '').slice(0, 11))
-              }
+              readOnly={sending || saving}
+              onChange={(e) => {
+                if (binding === 'email') setEmail(e.target.value)
+                else setPhone(e.target.value.replace(/\D/g, '').slice(0, 11))
+                setCode('')
+              }}
               type={binding === 'email' ? 'email' : 'tel'}
               inputMode={binding === 'email' ? 'email' : 'numeric'}
               placeholder={binding === 'email' ? 'name@example.com' : t('11 位手机号')}
@@ -260,19 +265,20 @@ export default function Identities() {
             />
           </label>
           <label className="mt-3 block">
-            <span className="text-[13px] text-text-sub">{t('验证码')}</span>
+            <span className="text-[13px] text-text-sub">{t(replacing ? '新手机号验证码' : '验证码')}</span>
             <div className="flex gap-2">
               <input
                 value={code}
                 onChange={(e) => setCode(e.target.value.replace(/\D/g, '').slice(0, 6))}
                 type="tel"
                 inputMode="numeric"
+                autoComplete="one-time-code"
                 placeholder={t('6 位验证码')}
                 className={inputCls}
               />
               <button
                 type="button"
-                disabled={left > 0 || sending}
+                disabled={left > 0 || sending || saving}
                 onClick={sendCode}
                 className={`mt-1.5 shrink-0 rounded-md border border-border px-3 text-[14px] font-medium disabled:opacity-50 ${
                   left > 0 ? 'text-text-sub' : 'bg-surface-2 text-text'
@@ -282,7 +288,6 @@ export default function Identities() {
               </button>
             </div>
           </label>
-          {cloud && <ContactVerification user={user} value={verification} onChange={setVerification} disabled={saving} />}
           {error && <p role="alert" className="mt-2 text-[13px] text-danger">{t(error)}</p>}
           <div className="mt-3 flex gap-2">
             <button
@@ -291,13 +296,13 @@ export default function Identities() {
                 setError('')
                 setVerification(undefined)
               }}
-              disabled={saving}
+              disabled={saving || sending}
               className="flex-1 rounded-md border border-border py-2.5 text-sm"
             >
               {t('取消')}
             </button>
-            <button onClick={submitBind} disabled={saving} className="flex-1 rounded-md bg-text py-2.5 text-sm font-semibold text-bg disabled:opacity-60">
-              {t('确认绑定')}
+            <button onClick={submitBind} disabled={saving || sending} className="flex-1 rounded-md bg-text py-2.5 text-sm font-semibold text-bg disabled:opacity-60">
+              {t(replacing ? '确认更换' : '确认绑定')}
             </button>
           </div>
         </section>
@@ -319,7 +324,8 @@ export default function Identities() {
       )}
 
       <p className="text-[13px] leading-relaxed text-text-sub">
-        {t('解绑前请确认还有其他登录方式，避免无法登录。手机号暂不支持自助换绑。')}
+        {t('解绑前请确认还有其他登录方式，避免无法登录。')}{' '}
+        <a href="/fitbestwebsite/#contact" target="_blank" rel="noopener" className="underline">{t('联系支持')}</a>
       </p>
 
       <Link to="/profile/settings" className="mt-5 inline-block text-[14px] text-text-sub underline">

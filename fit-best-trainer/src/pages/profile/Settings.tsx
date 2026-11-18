@@ -1,12 +1,13 @@
 import { useState, type ReactNode } from 'react'
 import { Link } from 'react-router-dom'
-import { Bell, Check, ChevronRight, Database, Fingerprint, Info, Languages, Shield, Volume2 } from 'lucide-react'
+import { Bell, Check, ChevronRight, Database, Download, Fingerprint, Info, Languages, Shield, Volume2 } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import PageHeader from '../../components/PageHeader'
 import Toggle from '../../components/Toggle'
 import { getPrefs, updatePrefs, type Prefs } from '../../utils/prefs'
 import { LANGS, getLangSetting, setLanguage, type LangSetting } from '../../i18n'
 import { isNative } from '../../platform/runtime'
+import { usePwa } from '../../platform/pwa'
 
 function Row(props: { to: string; icon: ReactNode; label: string; desc: string }) {
   return (
@@ -27,6 +28,7 @@ export default function Settings() {
   const { t } = useTranslation()
   const [prefs, setPrefs] = useState<Prefs>(getPrefs())
   const [lang, setLang] = useState<LangSetting>(getLangSetting())
+  const { installed } = usePwa()
 
   function patchPrefs(patch: Partial<Prefs>) {
     setPrefs(updatePrefs(patch))
@@ -65,6 +67,7 @@ export default function Settings() {
           <Row to="/profile/security" icon={<Shield size={16} />} label={t('账号与安全')} desc={t('修改密码 · 退出登录 · 注销账号')} />
         )}
         <Row to="/profile/data" icon={<Database size={16} />} label={t('数据管理')} desc={t('导出备份 · 导入记录 · 清空')} />
+        {!isNative && <Row to="/profile/install" icon={<Download size={16} />} label={t('安装 Fitbest')} desc={installed ? t('已安装') : t('添加到主屏幕或应用列表')} />}
         <Row to="/profile/about" icon={<Info size={16} />} label={t('关于 FITBEST')} desc={t('版本 1.0.0 · 隐私与协议')} />
       </section>
 

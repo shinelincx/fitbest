@@ -222,6 +222,24 @@ public class UsersService {
     }
 
     @Transactional
+    public Map<String, Object> replacePhone(UUID userId, String phone, String code, Verification verification) {
+        lockActiveUser(userId);
+        var current = verifiedIdentity(userId, IdentityType.phone);
+        if (current.getIdentifier().equals(phone)) throw BizException.badRequest("请填写不同于当前绑定的手机号");
+        codes.verifyTogether(securityProof(userId, verification),
+            new RedisCodeService.Proof(RedisCodeService.Channel.sms, RedisCodeService.Scene.bind, phone, code));
+        assertIdentifierFree(IdentityType.phone, phone, "该手机号已被其他账号绑定");
+        current.setIdentifier(phone);
+        current.setVerifiedAt(Times.nowUtc());
+        try {
+            identities.saveAndFlush(current);
+        } catch (DataIntegrityViolationException e) {
+            throw BizException.conflict("该手机号已被其他账号绑定");
+        }
+        return getMe(userId);
+    }
+
+    @Transactional
     public Map<String, Object> bindWechat(UUID userId, String code, String client) {
         WechatGateway.WechatIdentity identity = wechat.exchange(code, client == null ? "app" : client);
         String identifier = identity.unionid() != null ? identity.unionid() : identity.openid();
@@ -283,10 +301,25 @@ public class UsersService {
             credential = new UserCredential();
             credential.setUserId(userId);
         }
+        savePassword(credential, password);
+        return Map.of("ok", true);
+    }
+
+    @Transactional
+    public Map<String, Object> recoverPassword(UUID userId, String password, Verification verification) {
+        lockActiveUser(userId);
+        UserCredential credential = credentials.findById(userId)
+            .orElseThrow(() -> BizException.badRequest("该账号尚未设置密码"));
+        verifySecurityCode(userId, verification);
+        savePassword(credential, password);
+        tokens.revokeAll(userId);
+        return Map.of("ok", true);
+    }
+
+    private void savePassword(UserCredential credential, String password) {
         credential.setPasswordHash(BCRYPT.encode(password));
         credential.setUpdatedAt(Times.nowUtc());
         credentials.save(credential);
-        return Map.of("ok", true);
     }
 
     @Transactional
