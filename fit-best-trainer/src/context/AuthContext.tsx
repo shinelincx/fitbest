@@ -154,7 +154,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   async function logout() {
     await logoutAccount()
-    setUser(null)
+    setUser(getSessionUser())
   }
 
   async function updateProfile(patch: ProfilePatch) {

@@ -1,7 +1,7 @@
 import { afterEach, beforeEach, expect, it, vi } from 'vitest'
 import {
   bindEmail, bindPhone, changePassword, currentUserId, deleteAccount, getSessionUser,
-  loginWithSms, restoreSharedSession, sendEmailCode, sendSmsCode, setPassword, unbindEmail, updateAccount,
+  loginWithSms, logoutAccount, restoreSharedSession, sendEmailCode, sendSmsCode, setPassword, unbindEmail, updateAccount,
 } from '../src/utils/auth'
 
 vi.mock('../src/i18n', () => ({ default: { t: (text: string) => text } }))
@@ -83,6 +83,18 @@ it('赛事端切换凭证时隐藏旧账号并恢复新凭证对应的资料', a
   expect((await restoreSharedSession())?.id).toBe('account-b')
   expectRequest('/me', 'GET')
   expect(getSessionUser()).toMatchObject({ id: 'account-b', nickname: '另一个账号' })
+})
+
+it('退出请求返回时若登录账号已切换，保留新账号的凭证', async () => {
+  await signIn()
+  let finishLogout: (response: Response) => void = () => {}
+  transport.mockImplementationOnce(() => new Promise<Response>((resolve) => { finishLogout = resolve }))
+  const pending = logoutAccount()
+  await signIn('account-b')
+  finishLogout(json({ ok: true }))
+  await pending
+  expect(currentUserId()).toBe('account-b')
+  expect(localStorage.getItem('fitbest:refresh')).toBe('refresh-account-b')
 })
 
 it('云端发码区分登录和绑定，账号可以绑定邮箱、手机号和解绑邮箱', async () => {

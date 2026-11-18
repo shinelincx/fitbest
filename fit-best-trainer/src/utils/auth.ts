@@ -88,7 +88,8 @@ export function isCloudAccount(): boolean {
 
 function isCloudUser(id: string): boolean {
   const session = loadJSON<string | null>(SESSION_KEY, null)
-  if (session === CLOUD_PREFIX + id) return true
+  const subject = getAccessUserId()
+  if (session === CLOUD_PREFIX + id && (subject === null || subject === id)) return true
   if (session === id) return false
   throw new Error(i18n.t('登录账号已切换'))
 }
@@ -451,12 +452,16 @@ export async function unbindWechat(id: string): Promise<Account> {
 export async function logoutAccount(): Promise<void> {
   const id = loadJSON<string | null>(SESSION_KEY, null)
   if (id?.startsWith(CLOUD_PREFIX)) {
+    const userId = id.slice(CLOUD_PREFIX.length)
+    const subject = getAccessUserId()
+    if (subject && subject !== userId) return
     const refresh = localStorage.getItem('fitbest:refresh')
     try {
-      await request('/auth/logout', { method: 'POST', body: refresh ? { refreshToken: refresh } : {} })
+      await request('/auth/logout', { method: 'POST', body: refresh ? { refreshToken: refresh } : {}, userId })
     } catch {
       // 令牌已失效时忽略
     }
+    if (loadJSON(SESSION_KEY, null) !== id || (getAccessUserId() && getAccessUserId() !== userId)) return
     clearTokens()
     removeKey(CLOUD_ACCOUNT_KEY)
   }

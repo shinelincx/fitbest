@@ -1,7 +1,7 @@
+import { useLayoutEffect, useRef } from 'react'
 import { useTranslation } from 'react-i18next'
-import { NavLink, Outlet, useLocation } from 'react-router-dom'
+import { Link, NavLink, Outlet, useLocation } from 'react-router-dom'
 import { Activity, BarChart3, Dumbbell, Home, Radar, User } from 'lucide-react'
-import { Link } from 'react-router-dom'
 import { useAuth } from '../context/AuthContext'
 import { loginReturn } from '../utils/loginReturn'
 import { updateFitbest, usePwa } from '../platform/pwa'
@@ -29,8 +29,13 @@ const HD_BOTTOM_ITEMS = [
 export default function Layout() {
   const { t } = useTranslation()
   const { pathname } = useLocation()
+  const main = useRef<HTMLElement>(null)
   const { sessionExpired } = useAuth()
   const { update } = usePwa()
+
+  useLayoutEffect(() => {
+    main.current?.scrollTo({ top: 0 })
+  }, [pathname])
   // 训练页全屏沉浸：隐藏所有导航
   const isTraining = pathname.startsWith('/train') || /^\/pin(\/|$)/.test(pathname)
   const isAuth = pathname.startsWith('/login') || pathname.startsWith('/register')
@@ -55,7 +60,7 @@ export default function Layout() {
       {/* 手机版顶部安全区 */}
       {!IS_HD && <div className="h-[env(safe-area-inset-top)] shrink-0" />}
 
-      <main className={`${mainPaddingCls} ${isProfileForm ? 'scroll-pb-24' : ''}`}>
+      <main ref={main} className={`${mainPaddingCls} ${isProfileForm ? 'scroll-pb-24' : ''}`}>
         <div className={contentWrapCls}>
           {sessionExpired && !isAuth && !isTraining && !isShare && (
             <div role="status" className="mx-5 mt-3 rounded-md border border-border bg-surface px-3 py-2 text-[13px]">
