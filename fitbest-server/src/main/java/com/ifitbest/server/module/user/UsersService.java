@@ -200,11 +200,10 @@ public class UsersService {
     }
 
     @Transactional
-    public Map<String, Object> bindEmail(UUID userId, String email, String code, Verification verification) {
+    public Map<String, Object> bindEmail(UUID userId, String email, String code) {
         lockActiveUser(userId);
         assertMethodNotBound(userId, IdentityType.email);
-        codes.verifyTogether(securityProof(userId, verification),
-            new RedisCodeService.Proof(RedisCodeService.Channel.email, RedisCodeService.Scene.bind, email, code));
+        codes.verify(RedisCodeService.Channel.email, RedisCodeService.Scene.bind, email, code);
         assertIdentifierFree(IdentityType.email, email, "该账号已被其他用户绑定");
         try {
             UserIdentity identity = new UserIdentity();
@@ -285,7 +284,7 @@ public class UsersService {
     }
 
     @Transactional
-    public Map<String, Object> setPassword(UUID userId, String password, String oldPassword, Verification verification) {
+    public Map<String, Object> setPassword(UUID userId, String password, String oldPassword) {
         lockActiveUser(userId);
         UserCredential credential = credentials.findById(userId).orElse(null);
         if (credential != null) {
@@ -297,7 +296,6 @@ public class UsersService {
             }
         }
         if (credential == null) {
-            verifySecurityCode(userId, verification);
             credential = new UserCredential();
             credential.setUserId(userId);
         }

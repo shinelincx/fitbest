@@ -348,7 +348,7 @@ export async function loginWithWechatPhone(_phone: string, _code: string): Promi
   throw new Error(i18n.t('微信登录即将开放，请先使用手机号或邮箱登录'))
 }
 
-export async function bindEmail(id: string, email: string, code: string, verification?: Verification): Promise<Account> {
+export async function bindEmail(id: string, email: string, code: string): Promise<Account> {
   const e = normalizeEmail(email)
   if (!EMAIL_RE.test(e)) throw new Error('请输入正确的邮箱地址')
   if (!isCloudUser(id)) {
@@ -366,7 +366,7 @@ export async function bindEmail(id: string, email: string, code: string, verific
   const profile = await request<CloudProfile>('/me/identities/email', {
     method: 'POST',
     userId: id,
-    body: { email: e, code: code.trim(), verification },
+    body: { email: e, code: code.trim() },
   })
   return saveCloudProfile(id, profile)
 }
@@ -509,11 +509,11 @@ export async function updateAccount(id: string, patch: ProfilePatch): Promise<Ac
   return saved ?? saveCloudProfile(id, await request<CloudProfile>('/me', { userId: id }))
 }
 
-async function saveCloudPassword(id: string, password: string, oldPassword?: string, verification?: Verification): Promise<Account> {
+async function saveCloudPassword(id: string, password: string, oldPassword?: string): Promise<Account> {
   const result = await request<{ ok: boolean }>('/me/password', {
     method: 'PUT',
     userId: id,
-    body: { password, oldPassword, verification },
+    body: { password, oldPassword },
   })
   if (result?.ok !== true) throw new Error(i18n.t('修改失败，请重试'))
   const current = getSessionUser()
@@ -537,9 +537,9 @@ export async function changePassword(id: string, oldPassword: string, newPasswor
   return list[index]
 }
 
-export async function setPassword(id: string, newPassword: string, verification?: Verification): Promise<Account> {
+export async function setPassword(id: string, newPassword: string): Promise<Account> {
   if (newPassword.length < 6) throw new Error('密码至少 6 位')
-  if (isCloudUser(id)) return saveCloudPassword(id, newPassword, undefined, verification)
+  if (isCloudUser(id)) return saveCloudPassword(id, newPassword)
   const users = readUsers()
   const index = users.findIndex((u) => u.id === id)
   if (index < 0) throw new Error('账号不存在，请重新登录')

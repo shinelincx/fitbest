@@ -85,13 +85,13 @@ export default function Identities() {
     if (saving) return
     setSaving(true)
     try {
-      if (cloud && verification?.code.length !== 6) throw new Error(t('请先验证已有登录方式'))
       if (binding === 'email') {
         if (!EMAIL_RE.test(email.trim())) throw new Error(t('请输入正确的邮箱地址'))
-        await bindEmail(email, code, verification)
+        await bindEmail(email, code)
         toast(t('邮箱已绑定'))
       } else {
         if (!PHONE_RE.test(phone.trim())) throw new Error(t('请输入正确的 11 位手机号'))
+        if (cloud && verification?.code.length !== 6) throw new Error(t('请先验证已有登录方式'))
         await bindPhone(phone, code, verification, replacing)
         toast(t(replacing ? '手机号已更换' : '手机号已绑定'))
       }
@@ -247,7 +247,7 @@ export default function Identities() {
         <section className="mb-5 rounded-md border border-border bg-surface p-4">
           <h2 className="text-sm font-semibold">{t(replacing ? '更换手机号' : binding === 'email' ? '绑定邮箱' : '绑定手机号')}</h2>
           {replacing && <p className="mt-2 text-[13px] text-text-sub">{t('先验证已绑定的手机号或邮箱，再验证新手机号。更换后仍使用当前账号和训练记录。')}</p>}
-          {cloud && <ContactVerification key={binding} user={user} value={verification} onChange={setVerification} disabled={saving} />}
+          {cloud && binding === 'phone' && <ContactVerification user={user} value={verification} onChange={setVerification} disabled={saving} />}
           <label className="mt-3 block">
             <span className="text-[13px] text-text-sub">{t(replacing ? '新手机号' : binding === 'email' ? '邮箱' : '手机号')}</span>
             <input

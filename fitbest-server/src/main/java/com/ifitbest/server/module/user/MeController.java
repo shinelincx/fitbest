@@ -72,8 +72,7 @@ public class MeController {
 
     public record BindEmailBody(
         @NotBlank @Email(message = "邮箱格式不正确") String email,
-        @NotBlank @Pattern(regexp = "^\\d{6}$", message = "验证码应为 6 位数字") String code,
-        @Valid Verification verification) {
+        @NotBlank @Pattern(regexp = "^\\d{6}$", message = "验证码应为 6 位数字") String code) {
     }
 
     public record BindWechatBody(@NotBlank String code, String client) {
@@ -81,8 +80,7 @@ public class MeController {
 
     public record PasswordBody(
         @NotBlank @Size(min = 6, max = 32, message = "密码长度为 6 至 32 位") String password,
-        @Size(min = 6, max = 32) String oldPassword,
-        @Valid Verification verification) {
+        @Size(min = 6, max = 32) String oldPassword) {
     }
 
     public record DeleteBody(
@@ -155,7 +153,7 @@ public class MeController {
 
     @PostMapping("identities/email")
     public Map<String, Object> bindEmail(@CurrentUser UUID userId, @Valid @RequestBody BindEmailBody body) {
-        return users.bindEmail(userId, body.email(), body.code(), body.verification());
+        return users.bindEmail(userId, body.email(), body.code());
     }
 
     @PostMapping("identities/wechat")
@@ -171,7 +169,7 @@ public class MeController {
 
     @PutMapping("password")
     public Map<String, Object> setPassword(@CurrentUser UUID userId, @Valid @RequestBody PasswordBody body) {
-        return users.setPassword(userId, body.password(), body.oldPassword(), body.verification());
+        return users.setPassword(userId, body.password(), body.oldPassword());
     }
 
     @PutMapping("password/recovery")

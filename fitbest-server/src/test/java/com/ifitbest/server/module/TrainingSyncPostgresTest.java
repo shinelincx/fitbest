@@ -128,6 +128,44 @@ class TrainingSyncPostgresTest {
     }
 
     @Test
+    void bindEmailRequiresOnlyTheNewAddressCodeAndAnAuthenticatedSession() {
+        String email = userId + "@example.invalid";
+        String code = codes.issue(RedisCodeService.Channel.email, RedisCodeService.Scene.bind, email);
+        String body = """
+            {"email":"%s","code":"%s"}
+            """;
+        String correct = body.formatted(email, code);
+        assertThat(http.postForEntity("/api/v1/me/identities/email", Map.of("email", email, "code", code), Map.class)
+            .getStatusCode().value()).isEqualTo(401);
+        String wrong = code.equals("000000") ? "111111" : "000000";
+        assertThat(exchange("/api/v1/me/identities/email", HttpMethod.POST, body.formatted(email, wrong))
+            .getStatusCode().value()).isEqualTo(400);
+        assertThat(exchange("/api/v1/me/identities/email", HttpMethod.POST, correct)
+            .getStatusCode().value()).isEqualTo(200);
+        assertThat(jdbc.queryForObject("""
+            select count(*) from user_identities
+            where user_id = ? and type = 'email' and identifier = ? and verified_at is not null
+            """, Integer.class, userId, email)).isEqualTo(1);
+    }
+
+    @Test
+    void initialPasswordUsesTheSessionAndAnExistingPasswordStillNeedsTheOldValue() {
+        HttpHeaders anonymousHeaders = new HttpHeaders();
+        anonymousHeaders.setContentType(MediaType.APPLICATION_JSON);
+        String initial = "{\"password\":\"abcdef123\"}";
+        assertThat(http.exchange("/api/v1/me/password", HttpMethod.PUT, new HttpEntity<>(initial, anonymousHeaders), Map.class)
+            .getStatusCode().value()).isEqualTo(401);
+        assertThat(exchange("/api/v1/me/password", HttpMethod.PUT, initial)
+            .getStatusCode().value()).isEqualTo(200);
+        assertThat(exchange("/api/v1/me/password", HttpMethod.PUT, "{\"password\":\"different123\"}")
+            .getStatusCode().value()).isEqualTo(400);
+        assertThat(exchange("/api/v1/me/password", HttpMethod.PUT,
+            "{\"password\":\"different123\",\"oldPassword\":\"abcdef123\"}")
+            .getStatusCode().value()).isEqualTo(200);
+        assertThat(exchange("/api/v1/me", HttpMethod.GET, null).getBody().get("hasPassword")).isEqualTo(true);
+    }
+
+    @Test
     void profileAcceptsBrowserSizedAvatarAndRejectsOversizedInput() {
         String avatar = "data:image/jpeg;base64," + "A".repeat(2048);
         var saved = exchange("/api/v1/me", HttpMethod.PATCH, "{\"avatar\":\"" + avatar + "\"}");

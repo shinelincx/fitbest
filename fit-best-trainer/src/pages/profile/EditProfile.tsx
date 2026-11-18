@@ -8,9 +8,10 @@ import { useToast } from '../../components/Toast'
 import { useAuth } from '../../context/AuthContext'
 import { type Account, type ProfilePatch } from '../../utils/auth'
 import { fileToAvatar } from '../../utils/image'
+import { isNative } from '../../platform/runtime'
 
 const inputClass =
-  'mt-1.5 w-full rounded-md border border-border bg-surface px-4 py-3 text-base outline-none focus:border-text'
+  'mt-1.5 min-h-11 w-full rounded-md border border-border bg-surface px-4 py-3 text-base outline-none placeholder:text-text-sub/70 focus:border-text'
 
 type FieldError = { message: string; field?: string }
 
@@ -63,16 +64,16 @@ function ProfileForm({ title, description, label, dirty, busy, error, onSubmit, 
 }
 
 const genderOptions = [
-  { value: '', label: '未设置' },
+  { value: '', label: '请选择性别' },
   { value: 'male', label: '男' },
   { value: 'female', label: '女' },
   { value: 'other', label: '保密' },
 ] as const
 
 const bodyFields = [
-  { id: 'birthYear', label: '出生年份', min: 1900, max: 2100, integer: true },
-  { id: 'heightCm', label: '身高（cm）', min: 50, max: 250, integer: false },
-  { id: 'weightKg', label: '体重（kg）', min: 20, max: 300, integer: false },
+  { id: 'birthYear', label: '出生年份', min: 1900, max: 2100, integer: true, example: 1995 },
+  { id: 'heightCm', label: '身高（cm）', min: 50, max: 250, integer: false, example: 175.5 },
+  { id: 'weightKg', label: '体重（kg）', min: 20, max: 300, integer: false, example: 68.5 },
 ] as const
 
 const goalFields = [
@@ -81,7 +82,7 @@ const goalFields = [
 ] as const
 
 function EditDetails({ user }: { user: Account }) {
-  const { t } = useTranslation()
+  const { t, i18n } = useTranslation()
   const { updateProfile } = useAuth()
   const navigate = useNavigate()
   const toast = useToast()
@@ -97,6 +98,7 @@ function EditDetails({ user }: { user: Account }) {
   const [busy, setBusy] = useState(false)
   const [reading, setReading] = useState(false)
   const [error, setError] = useState<FieldError | null>(null)
+  const touchInput = isNative || window.matchMedia('(any-pointer: coarse)').matches
   const dirty = nickname !== user.nickname || avatar !== (user.avatar ?? '') || gender !== (user.gender ?? '')
     || bodyFields.some(({ id }) => body[id] !== String(user[id] ?? ''))
 
@@ -134,15 +136,17 @@ function EditDetails({ user }: { user: Account }) {
       else clear.push('gender')
     }
     for (const { id, label, min, max, integer } of bodyFields) {
-      const raw = body[id].trim()
-      if (raw === String(user[id] ?? '')) continue
-      if (!raw) {
+      const raw = body[id].trim().normalize('NFKC').replace(',', '.')
+      const input = event.currentTarget.elements.namedItem(id) as HTMLInputElement
+      const badInput = input.validity.badInput
+      if (!badInput && raw === String(user[id] ?? '')) continue
+      if (!badInput && !raw) {
         clear.push(id)
         continue
       }
       const value = Number(raw)
       const exact = integer ? Number.isInteger(value) : Number(value.toFixed(1)) === value
-      if (!Number.isFinite(value) || value < min || value > max || !exact) {
+      if (badInput || !/^\d+(?:\.\d+)?$/.test(raw) || value < min || value > max || !exact) {
         return setError({ field: id, message: t(integer ? '{{label}}需填写 {{min}}–{{max}} 范围内的整数'
           : '{{label}}需填写 {{min}}–{{max}} 范围内的数值，最多一位小数', { label: t(label), min, max }) })
       }
@@ -178,6 +182,7 @@ function EditDetails({ user }: { user: Account }) {
       <label className="block">
         <span className="text-[13px] text-text-sub">{t('昵称')}</span>
         <input id="nickname" value={nickname} onChange={(event) => setNickname(event.target.value)} maxLength={20}
+          autoComplete="nickname" placeholder={t('如 {{example}}', { example: 'Alex' })}
           aria-invalid={error?.field === 'nickname'} aria-describedby={error?.field === 'nickname' ? 'profile-form-error' : undefined} className={inputClass} />
       </label>
       <label className="block">
@@ -186,11 +191,16 @@ function EditDetails({ user }: { user: Account }) {
           {genderOptions.map(({ value, label }) => <option key={value} value={value}>{t(label)}</option>)}
         </select>
       </label>
-      {bodyFields.map(({ id, label, integer }) => (
+      {bodyFields.map(({ id, label, min, max, integer, example }) => (
         <label key={id} className="block">
           <span className="text-[13px] text-text-sub">{t(label)}</span>
-          <input id={id} value={body[id]} onChange={(event) => setBody({ ...body, [id]: event.target.value })}
-            inputMode={integer ? 'numeric' : 'decimal'} className={inputClass}
+          <input id={id} name={id} value={body[id]} onChange={(event) => setBody({ ...body, [id]: event.target.value })}
+            type={touchInput ? 'text' : 'number'} inputMode={integer ? 'numeric' : 'decimal'}
+            min={touchInput ? undefined : min} max={touchInput ? undefined : max}
+            step={touchInput ? undefined : integer ? 1 : 0.1}
+            autoComplete={id === 'birthYear' ? 'bday-year' : undefined}
+            placeholder={t('如 {{example}}', { example: example.toLocaleString(i18n.language, { useGrouping: false }) })}
+            className={inputClass}
             aria-invalid={error?.field === id} aria-describedby={error?.field === id ? 'profile-form-error' : undefined} />
         </label>
       ))}

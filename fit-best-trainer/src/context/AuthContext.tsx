@@ -39,7 +39,7 @@ interface AuthValue {
   loginWithEmail: (email: string, code: string, existingOnly?: boolean) => Promise<void>
   loginWithWechat: () => Promise<Account | null>
   loginWithWechatPhone: (phone: string, code: string) => Promise<void>
-  bindEmail: (email: string, code: string, verification?: Verification) => Promise<void>
+  bindEmail: (email: string, code: string) => Promise<void>
   bindPhone: (phone: string, code: string, verification?: Verification, replace?: boolean) => Promise<void>
   bindWechat: () => Promise<void>
   unbindEmail: (verification?: Verification) => Promise<void>
@@ -47,7 +47,7 @@ interface AuthValue {
   logout: () => Promise<void>
   updateProfile: (patch: ProfilePatch) => Promise<void>
   changePassword: (oldPassword: string, newPassword: string) => Promise<void>
-  setPassword: (newPassword: string, verification?: Verification) => Promise<void>
+  setPassword: (newPassword: string) => Promise<void>
   recoverPassword: (password: string, verification: Verification) => Promise<void>
   deleteAccount: (password?: string, verification?: Verification) => Promise<void>
 }
@@ -127,9 +127,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     setUser(await loginWithWechatPhoneApi(phone, code))
   }
 
-  async function bindEmail(email: string, code: string, verification?: Verification) {
+  async function bindEmail(email: string, code: string) {
     if (!user) throw new Error('请先登录')
-    setUser(await bindEmailApi(user.id, email, code, verification))
+    setUser(await bindEmailApi(user.id, email, code))
   }
 
   async function bindPhone(phone: string, code: string, verification?: Verification, replace?: boolean) {
@@ -167,9 +167,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     setUser(await changePasswordApi(user.id, oldPassword, newPassword))
   }
 
-  async function setPassword(newPassword: string, verification?: Verification) {
+  async function setPassword(newPassword: string) {
     if (!user) throw new Error('请先登录')
-    setUser(await setPasswordApi(user.id, newPassword, verification))
+    setUser(await setPasswordApi(user.id, newPassword))
   }
 
   async function deleteAccount(password?: string, verification?: Verification) {

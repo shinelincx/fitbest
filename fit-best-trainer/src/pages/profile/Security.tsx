@@ -35,7 +35,7 @@ export default function Security() {
 
   if (!user) return null
   const cloud = isCloudAccount()
-  const useVerification = cloud && (!user.passwordHash || recovering)
+  const useVerification = cloud && recovering && Boolean(user.passwordHash)
 
   async function handleChangePassword() {
     if (pwSaving) return
@@ -55,7 +55,7 @@ export default function Security() {
         await changePassword(oldPw, newPw)
         toast(t('密码已更新'))
       } else {
-        await setPassword(newPw, passwordVerification)
+        await setPassword(newPw)
         toast(t('密码已设置'))
       }
       setOldPw('')
