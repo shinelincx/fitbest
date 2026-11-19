@@ -41,6 +41,7 @@ const menuItems = [
   { key: '/machine-models', icon: <AppstoreOutlined aria-hidden="true" />, label: '器械型号' },
   { key: '/gyms', icon: <ShopOutlined />, label: '门店' },
   { key: '/events', icon: <CalendarOutlined />, label: '赛事' },
+  { key: '/feedback', icon: <FileTextOutlined />, label: '意见反馈' },
   { key: '/audit', icon: <FileTextOutlined />, label: '审计日志' },
   {
     key: 'pwa-apps',
@@ -63,6 +64,7 @@ const EXT_LINKS: Record<string, string> = {
 export default function AdminLayout() {
   const navigate = useNavigate()
   const location = useLocation()
+  const feedbackPage = stripBase(location.pathname) === '/feedback'
   const [collapsed, setCollapsed] = useState(false)
   const [brand, setBrand] = useState<BrandFilter>(() => {
     try {
@@ -117,6 +119,8 @@ export default function AdminLayout() {
         collapsed={collapsed}
         onCollapse={setCollapsed}
         width={220}
+        breakpoint={feedbackPage ? 'md' : undefined}
+        collapsedWidth={feedbackPage ? 0 : 80}
         style={{
           background: '#0f1115',
           borderRight: '1px solid #1f2127',
@@ -166,7 +170,7 @@ export default function AdminLayout() {
         />
       </Sider>
 
-      <Layout style={{ background: '#fafafb' }}>
+      <Layout style={{ background: '#fafafb', minWidth: 0 }}>
         <Header
           style={{
             height: 56,
@@ -179,7 +183,7 @@ export default function AdminLayout() {
             gap: 16,
           }}
         >
-          <Segmented
+          {feedbackPage ? <span /> : <Segmented
             value={brand}
             onChange={(v) => setBrand(v as BrandFilter)}
             size="middle"
@@ -198,7 +202,7 @@ export default function AdminLayout() {
                 ),
               },
             ]}
-          />
+          />}
           <div style={{ display: 'flex', alignItems: 'center', gap: 16 }}>
             {admin && (
               <Text type="secondary" style={{ fontSize: 13 }}>

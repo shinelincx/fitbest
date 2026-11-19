@@ -42,7 +42,7 @@ instance.interceptors.response.use(
     }
 
     const msg = data?.message || error.message || '请求失败'
-    message.error(msg)
+    if (!error.config?.url?.startsWith('/admin/feedback')) message.error(msg)
     return Promise.reject(error)
   },
 )

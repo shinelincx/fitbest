@@ -122,16 +122,17 @@ export interface RequestOptions {
 
 /** 发起 API 请求；失败抛 ApiError(code, message)，401 时自动刷新重试一次 */
 export async function request<T = unknown>(path: string, options: RequestOptions = {}): Promise<T> {
+  const form = options.body instanceof FormData
   const doFetch = async (token: string | null): Promise<Response> =>
     fetch(`${BASE}${path}`, {
       method: options.method ?? 'GET',
       signal: options.signal,
       headers: {
-        ...(options.body !== undefined ? { 'Content-Type': 'application/json' } : {}),
+        ...(options.body !== undefined && !form ? { 'Content-Type': 'application/json' } : {}),
         ...(token ? { Authorization: `Bearer ${token}` } : {}),
         ...(options.headers ?? {}),
       },
-      body: options.body !== undefined ? JSON.stringify(options.body) : undefined,
+      body: form ? options.body as FormData : JSON.stringify(options.body),
     })
 
   const token = getAccessToken()

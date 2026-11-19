@@ -10,6 +10,7 @@ export default defineConfig(({ mode }) => {
   const isHD = env.VITE_BUILD === 'hd'
   return {
   base: './',
+  resolve: { dedupe: ['react', 'react-dom'] },
   server: {
     fs: {
       allow: [searchForWorkspaceRoot(process.cwd()), fileURLToPath(new URL('../race-trainer-shared', import.meta.url))],

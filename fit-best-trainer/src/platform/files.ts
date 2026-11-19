@@ -13,10 +13,8 @@ async function blobToBase64(blob: Blob): Promise<string> {
   return btoa(binary)
 }
 
-function decodeBase64(data: string): string {
-  const binary = atob(data)
-  const bytes = Uint8Array.from(binary, (character) => character.charCodeAt(0))
-  return new TextDecoder().decode(bytes)
+function decodeBase64(data: string) {
+  return Uint8Array.from(atob(data), character => character.charCodeAt(0))
 }
 
 async function shareNativeFile(path: string, data: string, title: string, text?: string, utf8 = false) {
@@ -69,9 +67,27 @@ export async function pickNativeBackup(): Promise<string | null> {
     })
     const file = files[0]
     if (!file?.data) return null
-    return decodeBase64(file.data)
+    return new TextDecoder().decode(decodeBase64(file.data))
   } catch (error) {
     if (isCancellation(error)) return null
+    throw error
+  }
+}
+
+export async function pickNativeFeedbackImages(limit: number, maxBytes: number): Promise<File[]> {
+  try {
+    const { files } = await FilePicker.pickImages({ limit, readData: false })
+    if (files.length > limit) throw new Error('最多添加 3 张图片')
+    return await Promise.all(files.map(async file => {
+      if (file.size <= 0 || file.size > maxBytes) {
+        throw new Error('每张图片不得超过 5 MiB，且不能为空')
+      }
+      if (!file.path) throw new Error('无法读取所选图片，请重新选择')
+      const { data } = await Filesystem.readFile({ path: file.path })
+      return new File([typeof data === 'string' ? decodeBase64(data) : data], file.name, { type: file.mimeType })
+    }))
+  } catch (error) {
+    if (isCancellation(error)) return []
     throw error
   }
 }

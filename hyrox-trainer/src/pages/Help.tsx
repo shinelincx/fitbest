@@ -1,8 +1,8 @@
 import { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { ArrowLeft, ChevronDown, MessageSquare, Send, Mail } from 'lucide-react'
-import { loadJSON, saveJSON } from '../utils/storage'
-import { useToast } from '../components/Toast'
+import { ArrowLeft, ChevronDown, Mail } from 'lucide-react'
+import FeedbackForm, { type FeedbackReceipt } from '../../../race-trainer-shared/FeedbackForm'
+import { currentUserId, http } from '../api/client'
 
 const FAQS = [
   {
@@ -31,36 +31,15 @@ const FAQS = [
   },
 ]
 
-interface Feedback {
-  time: string
-  text: string
-}
-
 export default function Help() {
   const navigate = useNavigate()
-  const toast = useToast()
   const [open, setOpen] = useState<number | null>(0)
-  const [text, setText] = useState('')
-
-  function submit() {
-    const content = text.trim()
-    if (content.length < 5) {
-      toast('请至少输入 5 个字')
-      return
-    }
-    const list = loadJSON<Feedback[]>('hyrox:feedback', [])
-    saveJSON('hyrox:feedback', [
-      { time: new Date().toISOString(), text: content },
-      ...list,
-    ])
-    setText('')
-    toast('感谢反馈，我们已收到！')
-  }
 
   return (
     <div className="px-5 pt-5 hd:lg:mx-auto hd:lg:w-full hd:lg:max-w-[720px] hd:lg:px-8 hd:lg:pt-7">
       <header className="reveal reveal-1 mb-6 flex items-center justify-between">
         <button
+          aria-label="返回"
           onClick={() => navigate(-1)}
           className="flex h-9 w-9 items-center justify-center rounded-full border border-border bg-surface text-text-sub"
         >
@@ -77,6 +56,7 @@ export default function Help() {
           {FAQS.map((f, i) => (
             <div key={f.q} className={i !== FAQS.length - 1 ? 'border-b border-border' : ''}>
               <button
+                aria-expanded={open === i}
                 onClick={() => setOpen(open === i ? null : i)}
                 className="flex w-full items-center justify-between gap-3 p-4 text-left"
               >
@@ -99,24 +79,8 @@ export default function Help() {
       {/* 反馈 */}
       <section className="reveal reveal-3 mb-6">
         <h3 className="mb-2 px-1 text-xs font-semibold text-text-sub">意见反馈</h3>
-        <div className="rounded-radius-lg border border-border bg-surface p-4">
-          <div className="mb-2 flex items-center gap-2 text-xs text-text-sub">
-            <MessageSquare size={14} /> 使用中遇到的问题或建议
-          </div>
-          <textarea
-            value={text}
-            onChange={(e) => setText(e.target.value)}
-            rows={4}
-            placeholder="例如：心率带搜索不到设备…"
-            className="w-full resize-none rounded-radius-md border border-border bg-surface-2 p-3 text-sm text-text placeholder:text-text-sub/60 focus:border-primary focus:outline-none"
-          />
-          <button
-            onClick={submit}
-            className="mt-3 flex w-full items-center justify-center gap-1.5 rounded-radius-md bg-primary py-2.5 text-sm font-semibold text-bg transition-transform active:scale-[0.98]"
-          >
-            <Send size={15} /> 提交反馈
-          </button>
-        </div>
+        <FeedbackForm source="hyrox" accountId={currentUserId} send={(body, key, signal) =>
+          http.postForm<FeedbackReceipt>('/feedback', body, key, signal)} />
       </section>
 
       {/* 联系 */}

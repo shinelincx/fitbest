@@ -1,5 +1,8 @@
 server:
   port: 8080
+  tomcat:
+    # Leave enough room to drain a rejected 16 MiB upload and return a JSON 413.
+    max-swallow-size: 17MB
   # Nginx 反代场景信任 X-Forwarded-* 头（真实 IP / 协议）
   forward-headers-strategy: framework
 
@@ -10,6 +13,10 @@ spring:
     virtual:
       # JDK21 运行时启用虚拟线程（I/O 密集友好）；JDK17 自动忽略
       enabled: true
+  servlet:
+    multipart:
+      max-file-size: 5MB
+      max-request-size: 16MB
   datasource:
     # stringtype=unspecified：让 PG 对字符串参数按目标列类型隐式转换（枚举列 AdminRole 含 'super' 值，
     # Java 关键字无法作枚举常量名，admin role 统一按 String 映射）
@@ -48,6 +55,8 @@ management:
         enabled: true
 
 fitbest:
+  feedback:
+    trusted-proxies: ${FEEDBACK_TRUSTED_PROXIES:}
   env: ${NODE_ENV:development}
   public-base-url: ${PUBLIC_BASE_URL:http://localhost:8080}
   web:

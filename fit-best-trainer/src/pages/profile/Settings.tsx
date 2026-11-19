@@ -1,11 +1,14 @@
+import FeedbackForm, { type FeedbackReceipt } from '../../../../race-trainer-shared/FeedbackForm'
+import { getAccessUserId, request } from '../../api/client'
 import { useState, type ReactNode } from 'react'
 import { Link, useLocation, useNavigate } from 'react-router-dom'
-import { Bell, Check, ChevronRight, Database, Download, Fingerprint, Info, Languages, Shield, Volume2 } from 'lucide-react'
+import { Bell, Check, ChevronRight, Database, Download, Fingerprint, Info, Languages, MessageSquare, Shield, Volume2 } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import PageHeader from '../../components/PageHeader'
 import Toggle from '../../components/Toggle'
 import { getPrefs, updatePrefs, type Prefs } from '../../utils/prefs'
 import { LANGS, currentLangLabel, getLangSetting, setLanguage, type LangSetting } from '../../i18n'
+import { pickNativeFeedbackImages } from '../../platform/files'
 import { isNative } from '../../platform/runtime'
 import { usePwa } from '../../platform/pwa'
 
@@ -55,6 +58,7 @@ export default function Settings() {
         <Row to="/profile/settings/language" icon={<Languages size={16} />} label={t('语言')} desc={t(currentLangLabel())} />
         <Row to="/profile/data" icon={<Database size={16} />} label={t('数据管理')} desc={t('导出备份 · 导入记录 · 清空')} />
         {!isNative && <Row to="/profile/install" icon={<Download size={16} />} label={t('安装 Fitbest')} desc={installed ? t('已安装') : t('添加到主屏幕或应用列表')} />}
+        <Row to="/profile/settings/feedback" icon={<MessageSquare size={16} />} label={t('意见反馈')} desc={t('报告问题或提出建议')} />
         <Row to="/profile/about" icon={<Info size={16} />} label={t('关于 FITBEST')} desc={t('版本 1.0.0 · 隐私与协议')} />
       </section>
     </div>
@@ -120,6 +124,26 @@ export function LanguageSettings() {
           </button>
         ))}
       </section>
+    </div>
+  )
+}
+
+
+export function FeedbackSettings() {
+  const navigate = useNavigate()
+  const apiBase = import.meta.env.VITE_API_BASE?.trim()
+  return (
+    <div className="mx-auto w-full max-w-[720px] px-5 pt-5">
+      <PageHeader title="意见反馈" onBack={() => navigate('/profile/settings')} />
+      <FeedbackForm source="fitbest" accountId={getAccessUserId}
+        pickImages={isNative ? pickNativeFeedbackImages : undefined} send={(body, key, signal) => {
+        if (isNative && !apiBase?.startsWith('https://')) {
+          return Promise.reject(new Error('此原生版本尚未配置反馈服务'))
+        }
+        return request<FeedbackReceipt>('/feedback', {
+          method: 'POST', body, headers: { 'Idempotency-Key': key }, signal,
+        })
+      }} />
     </div>
   )
 }

@@ -10,10 +10,15 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.http.converter.HttpMessageNotReadableException;
 import org.springframework.security.access.AccessDeniedException;
 import org.springframework.validation.FieldError;
+import org.springframework.web.HttpMediaTypeNotSupportedException;
 import org.springframework.web.bind.MethodArgumentNotValidException;
+import org.springframework.web.bind.ServletRequestBindingException;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
 import org.springframework.web.method.annotation.HandlerMethodValidationException;
+import org.springframework.web.method.annotation.MethodArgumentTypeMismatchException;
+import org.springframework.web.multipart.MaxUploadSizeExceededException;
+import org.springframework.web.multipart.MultipartException;
 import org.springframework.web.servlet.resource.NoResourceFoundException;
 
 /**
@@ -71,6 +76,22 @@ public class GlobalExceptionHandler {
     @ExceptionHandler(AccessDeniedException.class)
     public ResponseEntity<Map<String, Object>> onAccessDenied(AccessDeniedException e) {
         return body(403, "无权访问");
+    }
+
+    @ExceptionHandler(HttpMediaTypeNotSupportedException.class)
+    public ResponseEntity<Map<String, Object>> onUnsupportedMediaType() {
+        return body(415, "不支持此请求体类型");
+    }
+
+    @ExceptionHandler(MaxUploadSizeExceededException.class)
+    public ResponseEntity<Map<String, Object>> onUploadLimit() {
+        return body(413, "上传超过限制（单张 5 MiB，整个请求 16 MiB）");
+    }
+
+    @ExceptionHandler({MultipartException.class, ServletRequestBindingException.class,
+        MethodArgumentTypeMismatchException.class})
+    public ResponseEntity<Map<String, Object>> onInvalidRequest() {
+        return body(400, "请求参数或上传格式不正确");
     }
 
     /** 兜底：与 NestJS 文案一致；服务端记录堆栈 */

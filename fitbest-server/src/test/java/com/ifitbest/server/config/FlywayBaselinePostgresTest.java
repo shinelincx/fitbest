@@ -54,7 +54,10 @@ class FlywayBaselinePostgresTest {
             assertThat(exists(schema, "deleted_session_keys")).isTrue();
             assertThat(exists(schema, "machine_type_dictionary")).isTrue();
             assertThat(exists(schema, "website_publications")).isTrue();
-            assertThat(guarded(schema).info().current().getVersion().getVersion()).isEqualTo("13");
+            assertThat(exists(schema, "feedback")).isTrue();
+            assertThat(exists(schema, "feedback_attachments")).isTrue();
+            assertThat(exists(schema, "feedback_history")).isTrue();
+            assertThat(guarded(schema).info().current().getVersion().getVersion()).isEqualTo("14");
             try (var connection = DriverManager.getConnection(url, user, password);
                  var statement = connection.prepareStatement(
                      "select password_hash, session_version, site_editor, site_publisher from " + schema + ".admin_users where id = ?")) {
