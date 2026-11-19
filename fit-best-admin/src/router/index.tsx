@@ -19,6 +19,7 @@ const Machines = lazy(() => import('@/pages/machines'))
 const MachineModels = lazy(() => import('@/pages/machines/Models'))
 const Gyms = lazy(() => import('@/pages/gyms'))
 const Events = lazy(() => import('@/pages/events'))
+const Feedback = lazy(() => import('@/pages/feedback'))
 const Audit = lazy(() => import('@/pages/audit'))
 const Accounts = lazy(() => import('@/pages/system/Accounts'))
 const Organizations = lazy(() => import('@/pages/system/Organizations'))
@@ -73,6 +74,7 @@ export const router = createBrowserRouter(
           { path: 'machine-models', element: withSuspense(<MachineModels />) },
           { path: 'gyms', element: withSuspense(<Gyms />) },
           { path: 'events', element: withSuspense(<Events />) },
+          { path: 'feedback', element: withSuspense(<Feedback />) },
           { path: 'audit', element: withSuspense(<Audit />) },
           { path: 'my-password', element: withSuspense(<Password />) },
           { path: 'system/accounts', element: <Restricted allowed={canManageAccounts}><Accounts /></Restricted> },

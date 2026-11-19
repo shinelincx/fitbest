@@ -100,17 +100,19 @@ async function request<T>(
   method: string,
   path: string,
   body?: unknown,
-  opts?: { auth?: boolean; userId?: string }
+  opts?: { auth?: boolean; userId?: string; headers?: Record<string, string>; signal?: AbortSignal }
 ): Promise<T> {
   const auth = opts?.auth ?? true
   const url = path.startsWith('http') ? path : `${BASE}${path}`
 
-  const headers: Record<string, string> = {}
+  const headers: Record<string, string> = { ...opts?.headers }
   let token: string | null = null
 
   // GET 请求默认不加 Content-Type
-  const init: RequestInit = { method, headers }
-  if (body !== undefined) {
+  const init: RequestInit = { method, headers, signal: opts?.signal }
+  if (body instanceof FormData) {
+    init.body = body
+  } else if (body !== undefined) {
     headers['Content-Type'] = 'application/json'
     init.body = JSON.stringify(body)
   }
@@ -161,7 +163,7 @@ async function request<T>(
 
   // 失败响应
   if (!res.ok) {
-    let message = '请求失败'
+    let message = res.status === 413 ? '上传超过大小限制' : '请求失败'
     try {
       const data = await res.json()
       if (data?.message) message = data.message
@@ -203,6 +205,8 @@ export class AuthExpiredError extends ApiError {
 }
 
 export const http = {
+  postForm: <T>(path: string, body: FormData, key: string, signal: AbortSignal) =>
+    request<T>('POST', path, body, { headers: { 'Idempotency-Key': key }, signal }),
   get: <T>(path: string, auth?: boolean) => request<T>('GET', path, undefined, { auth }),
   getForUser: <T>(userId: string, path: string) => request<T>('GET', path, undefined, { userId }),
   post: <T>(path: string, body?: unknown, auth?: boolean) => request<T>('POST', path, body, { auth }),

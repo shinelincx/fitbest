@@ -24,7 +24,7 @@ public class AdminBodyCacheFilter extends OncePerRequestFilter {
         boolean write = "POST".equals(method) || "PUT".equals(method) || "PATCH".equals(method) || "DELETE".equals(method);
         String path = request.getRequestURI();
         return !write || !path.startsWith("/api/v1/admin/")
-            || path.startsWith("/api/v1/admin/system/") || path.startsWith("/api/v1/admin/auth/");
+            || path.startsWith("/api/v1/admin/feedback/") || path.startsWith("/api/v1/admin/system/") || path.startsWith("/api/v1/admin/auth/");
     }
 
     @Override

@@ -44,7 +44,8 @@ public class AuditInterceptor implements HandlerInterceptor {
         if (!("POST".equals(method) || "PUT".equals(method) || "PATCH".equals(method) || "DELETE".equals(method))) {
             return;
         }
-        if (request.getRequestURI().startsWith("/api/v1/admin/system/")) {
+        if (request.getRequestURI().startsWith("/api/v1/admin/system/")
+            || request.getRequestURI().startsWith("/api/v1/admin/feedback/")) {
             return; // 系统维护操作在业务事务内写入结构化审计。
         }
         Object payloadObj = request.getAttribute(AdminAuthInterceptor.ATTR_ADMIN);

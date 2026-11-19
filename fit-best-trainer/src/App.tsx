@@ -13,7 +13,7 @@ import Profile from './pages/Profile'
 import EditProfile from './pages/profile/EditProfile'
 import Security from './pages/profile/Security'
 import Notifications from './pages/profile/Notifications'
-import Settings, { LanguageSettings, TrainingPreferences } from './pages/profile/Settings'
+import Settings, { FeedbackSettings, LanguageSettings, TrainingPreferences } from './pages/profile/Settings'
 import Install from './pages/profile/Install'
 import Identities from './pages/profile/Identities'
 import Data from './pages/profile/Data'
@@ -58,6 +58,7 @@ export default function App() {
               element={isNative ? <Navigate to="/profile/settings" replace /> : <AccountPage><Security /></AccountPage>}
             />
             <Route path="/profile/settings" element={<Settings />} />
+            <Route path="/profile/settings/feedback" element={<FeedbackSettings />} />
             <Route path="/profile/settings/training" element={<TrainingPreferences />} />
             <Route path="/profile/settings/language" element={<LanguageSettings />} />
             <Route path="/profile/install" element={isNative ? <Navigate to="/profile/settings" replace /> : <Install />} />
