@@ -79,6 +79,7 @@ jobs:
           FITBEST_SYNC_PG_URL: jdbc:postgresql://127.0.0.1:5432/fitbest?stringtype=unspecified
           FITBEST_SYNC_PG_USER: fitbest
           FITBEST_SYNC_PG_PASSWORD: fitbest-ci
+          FITBEST_FEEDBACK_REDIS_URL: redis://127.0.0.1:6379
           FITBEST_SYNC_RUN_CLIENT: 'true'
           FITBEST_SYNC_WEB_ROOT: ${{ runner.temp }}/fitbest-web
         run: mvn --batch-mode --no-transfer-progress verify

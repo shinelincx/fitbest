@@ -52,7 +52,7 @@ test('筛选、图片授权头、冲突刷新及服务故障重试', async ({ pa
   await filters.getByRole('combobox', { name: '来源' }).selectOption('hyrox')
   await filters.getByRole('combobox', { name: '状态' }).selectOption('pending')
   const filtered = page.waitForRequest(req => req.url().includes('source=hyrox') && req.url().includes('status=pending'))
-  await filters.getByRole('button', { name: '筛选' }).click()
+  await filters.getByRole('button', { name: /^筛\s*选$/ }).click()
   await filtered
 
   await page.getByRole('button', { name: '查看详情' }).click()
@@ -86,7 +86,7 @@ test('只呈现服务端许可的只读信息，403 时隐藏反馈，列表故�
   await page.goto(route)
   await expect(page.getByText('加载失败，请重试')).toBeVisible()
   status = 200
-  await page.getByRole('button', { name: '重试', exact: true }).click()
+  await page.getByRole('button', { name: /^重\s*试$/ }).click()
   await page.getByRole('button', { name: '查看详情' }).click()
   const dialog = page.getByRole('dialog', { name: '反馈详情' })
   await expect(dialog.getByText('只读权限')).toBeVisible()
