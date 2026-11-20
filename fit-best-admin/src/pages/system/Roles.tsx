@@ -13,6 +13,7 @@ export default function Roles() {
   return (
     <>
       <Typography.Title level={4}>角色权限</Typography.Title>
+      <Typography.Paragraph>平台管理员可在管理账号中授予「意见反馈」菜单权限，允许查看和处理三个应用的反馈。</Typography.Paragraph>
       <Table rowKey="role" dataSource={permissions} pagination={false} columns={[
         { title: '角色', dataIndex: 'role' },
         { title: '范围', dataIndex: 'scope' },

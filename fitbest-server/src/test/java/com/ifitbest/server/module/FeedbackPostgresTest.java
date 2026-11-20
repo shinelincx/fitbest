@@ -53,6 +53,8 @@ class FeedbackPostgresTest {
     private final UUID org = UUID.randomUUID();
     private final UUID superId = UUID.randomUUID();
     private final UUID viewerId = UUID.randomUUID();
+    private final UUID orgAdminId = UUID.randomUUID();
+    private final UUID gym = UUID.randomUUID();
     private final List<UUID> keys = new ArrayList<>();
     private String userToken;
     private String superToken;
@@ -76,9 +78,63 @@ class FeedbackPostgresTest {
     @AfterEach
     void cleanup() {
         for (UUID key : keys) db.update("DELETE FROM feedback WHERE idempotency_key = ?", key);
-        db.update("DELETE FROM admin_users WHERE id IN (?,?)", superId, viewerId);
+        db.update("DELETE FROM audit_logs WHERE admin_id IN (?, ?, ?)", superId, viewerId, orgAdminId);
+        db.update("DELETE FROM admin_users WHERE id IN (?, ?, ?)", superId, viewerId, orgAdminId);
+        db.update("DELETE FROM gyms WHERE id = ?", gym);
         db.update("DELETE FROM orgs WHERE id = ?", org);
         db.update("DELETE FROM users WHERE id = ?", user);
+    }
+
+    @Test
+    void menuGrantAllowsViewingAndHandlingAndRevocationInvalidatesSession() {
+        db.update("INSERT INTO gyms (id, org_id, name, code) VALUES (?, ?, 'Feedback test', ?)", gym, org, gym.toString());
+        String orgAdminToken = admin(orgAdminId, "org_admin");
+        var account = new java.util.HashMap<String, Object>(Map.of("name", "Feedback test", "phone", "199"
+            + "%08d".formatted(Math.floorMod(viewerId.hashCode(), 100_000_000)), "role", "viewer", "orgId", org,
+            "gymId", gym, "feedbackManager", true));
+        String collection = "/api/v1/admin/feedback";
+        var receipt = submit("hyrox", "菜单权限访客测试", null, key(), png);
+        assertThat(receipt.getStatusCode().value()).isEqualTo(200);
+        String path = collection + "/" + receipt.getBody().get("id");
+        assertThat(adminGet(collection, viewerToken, Map.class).getStatusCode().value()).isEqualTo(403);
+        assertThat(updateViewer(orgAdminToken, account).getStatusCode().value()).isEqualTo(403);
+        assertThat(updateViewer(superToken, account).getBody().get("feedbackManager")).isEqualTo(true);
+        assertThat(adminGet(collection, viewerToken, Map.class).getStatusCode().value()).isEqualTo(401);
+
+        String granted = viewerSession();
+        account.remove("feedbackManager");
+        assertThat(updateViewer(superToken, account).getBody().get("feedbackManager")).isEqualTo(true);
+        assertThat(adminGet(collection, granted, Map.class).getBody().get("canWrite")).isEqualTo(true);
+        var detail = adminGet(path, granted, Map.class).getBody();
+        assertThat(detail.get("canWrite")).isEqualTo(true);
+        String image = path + "/attachments/" + ((List<?>) detail.get("attachments")).get(0);
+        assertThat(adminGet(image, granted, byte[].class).getBody()).isEqualTo(png);
+        assertThat(action(path, granted, 0, "start").getStatusCode().value()).isEqualTo(200);
+        assertThat(updateViewer(granted, account).getStatusCode().value()).isEqualTo(403);
+        assertThat(updateViewer(orgAdminToken, account).getStatusCode().value()).isEqualTo(404);
+
+        account.put("feedbackManager", false);
+        assertThat(updateViewer(superToken, account).getBody().get("feedbackManager")).isEqualTo(false);
+        assertThat(adminGet(image, granted, byte[].class).getStatusCode().value()).isEqualTo(401);
+        String revoked = viewerSession();
+        assertThat(adminGet(path, revoked, Map.class).getStatusCode().value()).isEqualTo(403);
+        assertThat(action(path, revoked, 1, "resolve").getStatusCode().value()).isEqualTo(403);
+        assertThat(db.queryForObject("""
+            SELECT count(*) FROM audit_logs WHERE admin_id = ? AND target_id = ?
+              AND action = 'account.update'
+              AND payload::jsonb->'changes'->'before'->>'feedbackManager'
+                  <> payload::jsonb->'changes'->'after'->>'feedbackManager'
+            """, Long.class, superId, viewerId.toString())).isEqualTo(2L);
+    }
+
+    private ResponseEntity<Map> updateViewer(String token, Map<String, Object> values) {
+        return http.exchange("/api/v1/admin/system/accounts/" + viewerId, HttpMethod.PUT,
+            new HttpEntity<>(values, headers(token)), Map.class);
+    }
+
+    private String viewerSession() {
+        long version = db.queryForObject("SELECT session_version FROM admin_users WHERE id = ?", Long.class, viewerId);
+        return jwt.signAdmin(new AdminPayload(viewerId.toString(), "viewer", org.toString(), gym.toString(), version));
     }
 
     @Test

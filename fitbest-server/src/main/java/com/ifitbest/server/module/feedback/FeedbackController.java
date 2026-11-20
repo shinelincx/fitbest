@@ -145,7 +145,7 @@ public class FeedbackController {
             .header("X-Content-Type-Options", "nosniff").body(image.bytes());
     }
 
-    @AuthedAdmin
+    @AuthedAdmin(allowViewerWrite = true)
     @PostMapping("/admin/feedback/{id}/actions")
     public ResponseEntity<Map<String, Long>> change(@CurrentAdmin AdminPayload actor, @PathVariable UUID id,
                                                      @RequestBody Change input) {

@@ -54,6 +54,7 @@ public class AdminUser {
     private boolean siteEditor;
 
     private boolean sitePublisher;
+    private boolean feedbackManager;
 
     @Column(name = "created_at", nullable = false)
     private LocalDateTime createdAt;

@@ -14,7 +14,7 @@ function useFixtureAccount(page: Page, admin: AdminInfo) {
   }, admin)
 }
 
-test('账号创建表单提交组织与门店并展示一次性设密链接', async ({ page }) => {
+test('账号创建表单提交组织、门店与菜单权限并展示一次性设密链接', async ({ page }) => {
   await useFixtureAccount(page, platformAdmin)
   await page.route('**/admin/system/organizations', route => route.fulfill({ json: [
     { id: 'org-1', name: '测试组织', status: 'active' },
@@ -34,10 +34,14 @@ test('账号创建表单提交组织与门店并展示一次性设密链接', as
   await form.getByLabel('手机号').fill('13900000066')
   await form.getByLabel('门店').click()
   await page.getByText('测试门店', { exact: true }).click()
+  const feedbackMenu = form.getByRole('switch', { name: '意见反馈菜单' })
+  await expect(feedbackMenu).not.toBeChecked()
+  await feedbackMenu.click()
   const submitted = page.waitForRequest(request => request.url().endsWith('/admin/system/accounts') && request.method() === 'POST')
   await form.getByRole('button', { name: '创建并生成设密链接' }).click()
   expect((await submitted).postDataJSON()).toMatchObject({
     name: '新建只读人员', phone: '13900000066', role: 'viewer', orgId: 'org-1', gymId: 'gym-1',
+    feedbackManager: true,
   })
   const link = page.getByRole('dialog', { name: '一次性设密链接' })
   await expect(link.getByText(/\/fit-best\/setup#token=dummy-link-credential/)).toBeVisible()

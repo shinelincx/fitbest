@@ -6,7 +6,7 @@ import AdminLayout from '@/layouts/AdminLayout'
 import { Result } from 'antd'
 import { useAdminStore } from '@/store/admin'
 import type { AdminInfo } from '@/api/admin'
-import { canAccessWebsite, canManageAccounts, isPlatform } from '@/utils/adminPermissions'
+import { canAccessFeedback, canAccessWebsite, canManageAccounts, isPlatform } from '@/utils/adminPermissions'
 
 const Login = lazy(() => import('@/pages/login'))
 const Dashboard = lazy(() => import('@/pages/dashboard'))
@@ -74,7 +74,7 @@ export const router = createBrowserRouter(
           { path: 'machine-models', element: withSuspense(<MachineModels />) },
           { path: 'gyms', element: withSuspense(<Gyms />) },
           { path: 'events', element: withSuspense(<Events />) },
-          { path: 'feedback', element: withSuspense(<Feedback />) },
+          { path: 'feedback', element: <Restricted allowed={canAccessFeedback}><Feedback /></Restricted> },
           { path: 'audit', element: withSuspense(<Audit />) },
           { path: 'my-password', element: withSuspense(<Password />) },
           { path: 'system/accounts', element: <Restricted allowed={canManageAccounts}><Accounts /></Restricted> },

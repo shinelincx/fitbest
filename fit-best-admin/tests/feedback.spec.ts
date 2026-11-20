@@ -10,11 +10,11 @@ const item = {
   content: '隔离反馈浏览器样本', submitterId: null, submitterName: null,
 }
 
-async function seed(page: Page, role: 'viewer' | 'super') {
-  await page.addInitScript(role => {
+async function seed(page: Page, role: 'viewer' | 'super', feedbackManager = false) {
+  await page.addInitScript(({ role, feedbackManager }) => {
     localStorage.setItem('fitbest_admin_token', 'feedback-test-token')
-    localStorage.setItem('fitbest_admin_info', JSON.stringify({ id: 'test', role, name: '测试人员' }))
-  }, role)
+    localStorage.setItem('fitbest_admin_info', JSON.stringify({ id: 'test', role, feedbackManager, name: '测试人员' }))
+  }, { role, feedbackManager })
 }
 
 test('筛选、图片授权头、冲突刷新及服务故障重试', async ({ page }) => {
@@ -74,25 +74,44 @@ test('筛选、图片授权头、冲突刷新及服务故障重试', async ({ pa
   expect(attempts).toBe(3)
 })
 
-test('只呈现服务端许可的只读信息，403 时隐藏反馈，列表故障可重试', async ({ page }) => {
-  await seed(page, 'viewer')
+test('有菜单权限的账号可以处理反馈，列表故障可重试', async ({ page }) => {
+  await seed(page, 'viewer', true)
   let status = 500
   await page.route(`${api}?*`, route => status === 200
-    ? route.fulfill({ json: { items: [item], total: 1, canWrite: false } })
+    ? route.fulfill({ json: { items: [item], total: 1, canWrite: true } })
     : route.fulfill({ status, json: { message: '测试错误' } }))
   await page.route(`${api}/${id}`, route => route.fulfill({
-    json: { feedback: item, attachments: [], history: [], canWrite: false },
+    json: { feedback: item, attachments: [], history: [], canWrite: true },
   }))
+  await page.route(`${api}/${id}/actions`, async route => {
+    expect(route.request().postDataJSON().action).toBe('start')
+    await route.fulfill({ json: { version: 1 } })
+  })
   await page.goto(route)
+  await expect(page.getByRole('menuitem', { name: '意见反馈' })).toBeVisible()
   await expect(page.getByText('加载失败，请重试')).toBeVisible()
   status = 200
   await page.getByRole('button', { name: /^重\s*试$/ }).click()
   await page.getByRole('button', { name: '查看详情' }).click()
   const dialog = page.getByRole('dialog', { name: '反馈详情' })
-  await expect(dialog.getByText('只读权限')).toBeVisible()
-  await expect(dialog.getByRole('button', { name: '开始处理' })).toHaveCount(0)
+  const action = page.waitForResponse(response => response.url().endsWith('/actions'))
+  await dialog.getByRole('button', { name: '开始处理' }).click()
+  expect((await action).status()).toBe(200)
   status = 403
   await page.reload()
   await expect(page.getByText('当前账号无反馈数据权限')).toBeVisible()
   await expect(page.getByText(item.content)).toHaveCount(0)
+})
+
+test('无菜单权限的账号看不到入口且直接访问被拒绝', async ({ page }) => {
+  await seed(page, 'viewer')
+  let feedbackRequests = 0
+  await page.route('**/api/v1/admin/feedback**', route => {
+    feedbackRequests += 1
+    return route.fulfill({ status: 403 })
+  })
+  await page.goto(route)
+  await expect(page.getByText('无权访问此页面')).toBeVisible()
+  await expect(page.getByRole('menuitem', { name: '意见反馈' })).toHaveCount(0)
+  expect(feedbackRequests).toBe(0)
 })

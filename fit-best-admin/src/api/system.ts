@@ -14,6 +14,7 @@ export type OrganizationInput = Omit<Organization, 'id'>
 export type AccountInput = Pick<AdminInfo, 'name' | 'phone' | 'role' | 'orgId' | 'gymId'> & {
   siteEditor: boolean
   sitePublisher: boolean
+  feedbackManager?: boolean
 }
 
 export interface SetupLink {

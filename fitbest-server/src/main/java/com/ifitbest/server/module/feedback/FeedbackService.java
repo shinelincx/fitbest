@@ -2,6 +2,7 @@ package com.ifitbest.server.module.feedback;
 
 import com.ifitbest.server.common.auth.JwtCodec.AdminPayload;
 import com.ifitbest.server.common.error.BizException;
+import com.ifitbest.server.module.admin.SystemAdminService;
 import java.nio.ByteBuffer;
 import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
@@ -29,9 +30,11 @@ public class FeedbackService {
         """;
 
     private final JdbcTemplate db;
+    private final SystemAdminService admins;
 
-    public FeedbackService(JdbcTemplate db) {
+    public FeedbackService(JdbcTemplate db, SystemAdminService admins) {
         this.db = db;
+        this.admins = admins;
     }
 
     public record Image(String mediaType, byte[] bytes) {}
@@ -78,7 +81,7 @@ public class FeedbackService {
     @Transactional(readOnly = true, isolation = Isolation.REPEATABLE_READ)
     public Page list(AdminPayload actor, String source, String status, OffsetDateTime from, OffsetDateTime to,
                      int page, int size) {
-        authorizeRead(actor);
+        requireFeedbackMenu(actor);
         if ((source != null && !SOURCES.contains(source)) || (status != null && !STATUSES.contains(status))
             || (from != null && to != null && !from.isBefore(to)) || page < 1 || size < 1 || size > 100) {
             throw BizException.badRequest("筛选条件或分页参数不正确");
@@ -98,7 +101,7 @@ public class FeedbackService {
 
     @Transactional(readOnly = true, isolation = Isolation.REPEATABLE_READ)
     public Detail detail(AdminPayload actor, UUID id) {
-        authorizeRead(actor);
+        requireFeedbackMenu(actor);
         Summary feedback = find(id);
         var attachments = db.queryForList(
             "SELECT id FROM feedback_attachments WHERE feedback_id = ? ORDER BY position", UUID.class, id);
@@ -110,7 +113,7 @@ public class FeedbackService {
     }
 
     public Image attachment(AdminPayload actor, UUID id, UUID attachmentId) {
-        authorizeRead(actor);
+        requireFeedbackMenu(actor);
         return db.query("SELECT media_type, content FROM feedback_attachments WHERE feedback_id = ? AND id = ?",
             (rs, row) -> new Image(rs.getString("media_type"), rs.getBytes("content")), id, attachmentId)
             .stream().findFirst().orElseThrow(() -> BizException.notFound("图片不存在"));
@@ -118,7 +121,7 @@ public class FeedbackService {
 
     @Transactional
     public Map<String, Long> change(AdminPayload actor, UUID id, Change input) {
-        authorizeWrite(actor);
+        requireFeedbackMenu(actor);
         String note = input.note() == null ? "" : input.note().strip();
         if (input.version() == null || input.version() < 0 || input.action() == null || note.length() > 2000) {
             throw BizException.badRequest("处理参数不正确");
@@ -157,16 +160,10 @@ public class FeedbackService {
             .stream().findFirst().orElseThrow(() -> BizException.notFound("反馈不存在"));
     }
 
-    // The current server has no verified feedback scope for non-platform roles.
-    private void authorizeRead(AdminPayload actor) {
-        if (!"super".equals(actor.role())) {
+    private void requireFeedbackMenu(AdminPayload actor) {
+        var admin = admins.current(actor);
+        if (!SystemAdminService.platform(admin) && !admin.isFeedbackManager()) {
             throw BizException.forbidden("当前账号无反馈数据权限");
-        }
-    }
-
-    private void authorizeWrite(AdminPayload actor) {
-        if (!"super".equals(actor.role())) {
-            throw BizException.forbidden("当前账号无反馈处理权限");
         }
     }
 
