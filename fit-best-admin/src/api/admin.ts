@@ -12,6 +12,7 @@ export interface AdminInfo {
   status?: string
   siteEditor?: boolean
   sitePublisher?: boolean
+  feedbackManager?: boolean
   createdAt?: string
 }
 

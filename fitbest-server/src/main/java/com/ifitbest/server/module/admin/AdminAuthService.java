@@ -51,6 +51,7 @@ public class AdminAuthService {
         out.put("status", admin.getStatus());
         out.put("siteEditor", admin.isSiteEditor());
         out.put("sitePublisher", admin.isSitePublisher());
+        out.put("feedbackManager", admin.isFeedbackManager());
         out.put("createdAt", admin.getCreatedAt());
         return out;
     }

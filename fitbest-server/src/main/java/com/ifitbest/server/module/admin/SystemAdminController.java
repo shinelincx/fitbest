@@ -26,7 +26,8 @@ public class SystemAdminController {
     }
 
     public record AccountInput(@NotBlank @Size(max = 80) String name, @NotBlank @Pattern(regexp = "1[3-9][0-9]{9}") String phone,
-                               @NotBlank String role, UUID orgId, UUID gymId, boolean siteEditor, boolean sitePublisher) {}
+                               @NotBlank String role, UUID orgId, UUID gymId, boolean siteEditor, boolean sitePublisher,
+                               Boolean feedbackManager) {}
     public record OrgInput(@NotBlank @Size(max = 100) String name,
                            @NotBlank @Pattern(regexp = "[a-zA-Z0-9_-]{1,40}") String code,
                            @NotBlank @Pattern(regexp = "active|disabled") String status) {}

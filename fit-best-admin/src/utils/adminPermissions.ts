@@ -15,10 +15,11 @@ export const canManageAccounts = (admin: AdminInfo | null) => isPlatform(admin) 
 export const canEditWebsite = (admin: AdminInfo | null) => isPlatform(admin) || admin?.siteEditor === true
 export const canPublishWebsite = (admin: AdminInfo | null) => isPlatform(admin) || admin?.sitePublisher === true
 export const canAccessWebsite = (admin: AdminInfo | null) => canEditWebsite(admin) || canPublishWebsite(admin)
+export const canAccessFeedback = (admin: AdminInfo | null) => isPlatform(admin) || admin?.feedbackManager === true
 
 export function canManageAccount(actor: AdminInfo | null, target: AdminInfo) {
   return actor?.id !== target.id && (isPlatform(actor) || (
     actor?.role === 'org_admin' && actor.orgId === target.orgId && gymRoles.has(target.role)
-      && !target.siteEditor && !target.sitePublisher
+      && !target.siteEditor && !target.sitePublisher && !target.feedbackManager
   ))
 }

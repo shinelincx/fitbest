@@ -19,7 +19,7 @@ import { Outlet, useLocation, useNavigate } from 'react-router-dom'
 import { useAdminStore } from '@/store/admin'
 import { stripBase } from '@/router/base'
 import { BRAND_META, type BrandFilter } from '@/utils/brand'
-import { canAccessWebsite, canManageAccounts, isPlatform, roleLabels } from '@/utils/adminPermissions'
+import { canAccessFeedback, canAccessWebsite, canManageAccounts, isPlatform, roleLabels } from '@/utils/adminPermissions'
 
 const { Sider, Header, Content } = Layout
 const { Text } = Typography
@@ -152,7 +152,7 @@ export default function AdminLayout() {
         <Menu
           mode="inline"
           selectedKeys={[stripBase(location.pathname).startsWith('/users/') ? '/users' : stripBase(location.pathname)]}
-          items={[...menuItems, ...maintenanceItems]}
+          items={[...menuItems.filter(({ key }) => key !== '/feedback' || canAccessFeedback(admin)), ...maintenanceItems]}
           onClick={({ key }) => {
             if (key.startsWith('ext:')) {
               const url = EXT_LINKS[key]

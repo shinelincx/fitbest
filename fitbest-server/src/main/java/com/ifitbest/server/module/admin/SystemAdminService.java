@@ -137,6 +137,10 @@ public class SystemAdminService {
         if ((input.siteEditor() || input.sitePublisher()) && (!platform(actor) || "viewer".equals(input.role()))) {
             throw BizException.forbidden("不能授予官网权限");
         }
+        boolean feedbackManager = input.feedbackManager() == null ? target.isFeedbackManager() : input.feedbackManager();
+        if (feedbackManager && !platform(actor)) {
+            throw BizException.forbidden("仅平台管理员可以授予意见反馈菜单权限");
+        }
         requireActiveOrg(orgId);
         UUID gymId = input.gymId();
         if (ORG_ROLES.contains(input.role())) {
@@ -159,7 +163,8 @@ public class SystemAdminService {
             protectLastPlatform(target);
         }
         var before = scope(target);
-        boolean accessChanged = !scopeMatches(target, orgId, gymId, input);
+        boolean accessChanged = !scopeMatches(target, orgId, gymId, input)
+            || target.isFeedbackManager() != feedbackManager;
         target.setOrgId(orgId);
         target.setGymId(gymId);
         target.setName(input.name().trim());
@@ -167,6 +172,7 @@ public class SystemAdminService {
         target.setRole(input.role());
         target.setSiteEditor(input.siteEditor());
         target.setSitePublisher(input.sitePublisher());
+        target.setFeedbackManager(feedbackManager);
         if (id == null) {
             return issueSetup(actor, target, "account.create");
         }
@@ -275,7 +281,7 @@ public class SystemAdminService {
 
     private static boolean mayManage(AdminUser actor, AdminUser target) {
         return platform(actor) || actor.getOrgId().equals(target.getOrgId()) && ORG_ROLES.contains(target.getRole())
-            && !target.isSiteEditor() && !target.isSitePublisher();
+            && !target.isSiteEditor() && !target.isSitePublisher() && !target.isFeedbackManager();
     }
 
     private static BizException expiredSetup() {
@@ -339,6 +345,7 @@ public class SystemAdminService {
         fields.put("status", target.getStatus());
         fields.put("siteEditor", target.isSiteEditor());
         fields.put("sitePublisher", target.isSitePublisher());
+        fields.put("feedbackManager", target.isFeedbackManager());
         return fields;
     }
 

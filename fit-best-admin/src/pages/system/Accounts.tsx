@@ -55,8 +55,8 @@ export default function Accounts() {
     setEditing(row)
     form.resetFields()
     form.setFieldsValue(row === 'new'
-      ? { orgId: actor?.orgId, gymId: null, role: 'viewer', siteEditor: false, sitePublisher: false }
-      : { ...row, siteEditor: !!row.siteEditor, sitePublisher: !!row.sitePublisher })
+      ? { orgId: actor?.orgId, gymId: null, role: 'viewer', siteEditor: false, sitePublisher: false, feedbackManager: false }
+      : { ...row, siteEditor: !!row.siteEditor, sitePublisher: !!row.sitePublisher, feedbackManager: !!row.feedbackManager })
   }
 
   async function save(values: AccountInput) {
@@ -67,6 +67,7 @@ export default function Accounts() {
         data.siteEditor = false
         data.sitePublisher = false
       }
+      if (!platform || values.role === 'super') data.feedbackManager = false
       if (editing === 'new') setLink(await systemApi.createAccount(data))
       else if (editing) await systemApi.updateAccount(editing.id, data)
       message.success('管理账号已保存')
@@ -176,6 +177,12 @@ export default function Accounts() {
               <Form.Item label="官网编辑权限" name="siteEditor" valuePropName="checked"><Switch /></Form.Item>
               <Form.Item label="官网发布权限" name="sitePublisher" valuePropName="checked"><Switch /></Form.Item>
             </Space>
+          )}
+          {platform && selectedRole && selectedRole !== 'super' && (
+            <Form.Item label="意见反馈菜单" name="feedbackManager" valuePropName="checked"
+              extra="可查看和处理三个应用的反馈，包括访客反馈和附件。">
+              <Switch />
+            </Form.Item>
           )}
         </Form>
       </Modal>
