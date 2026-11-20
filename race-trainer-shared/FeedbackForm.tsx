@@ -178,9 +178,11 @@ export default function FeedbackForm({ source, accountId, pickImages, send }: Pr
         ))}
       </ul>
       {error && <p role="alert" className="my-2 text-sm">{error}</p>}
-      {success && <p role="status" className="my-2 text-sm">感谢反馈，服务端已保存。</p>}
-      <button type="submit" disabled={busy || picking}
-        className="mt-3 min-h-11 w-full rounded-md bg-primary p-2 text-sm font-semibold text-bg disabled:opacity-60">
+      <p role="status" aria-atomic="true" className={success ? 'my-2 text-sm' : 'sr-only'}>
+        {success ? '感谢反馈，服务端已保存。' : ''}
+      </p>
+      <button type="submit" aria-disabled={busy || picking}
+        className="mt-3 min-h-11 w-full rounded-md bg-primary p-2 text-sm font-semibold text-bg aria-disabled:opacity-60">
         {busy ? '提交中…' : '提交反馈'}
       </button>
     </form>
