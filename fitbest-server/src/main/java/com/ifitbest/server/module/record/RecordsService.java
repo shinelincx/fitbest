@@ -12,7 +12,6 @@ import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Sort;
 import org.springframework.data.jpa.domain.Specification;
 
-import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.ifitbest.server.common.error.BizException;
 import com.ifitbest.server.common.util.Times;
@@ -221,18 +220,5 @@ public class RecordsService {
     private void deleteWithDeviceSessions(TrainingRecord record) {
         deviceSessions.deleteByTrainingRecordId(record.getId());
         records.delete(record);
-    }
-
-    /** 供 AI 教练 / 管理端复用 */
-    public java.util.List<TrainingRecord> recent(UUID userId, String app, int limit) {
-        return records.findByUserIdAndApp(userId, app, org.springframework.data.domain.PageRequest.of(0, limit));
-    }
-
-    public static JsonNode toJsonNode(String raw) {
-        try {
-            return raw == null || raw.isBlank() ? null : MAPPER.readTree(raw);
-        } catch (Exception e) {
-            return null;
-        }
     }
 }

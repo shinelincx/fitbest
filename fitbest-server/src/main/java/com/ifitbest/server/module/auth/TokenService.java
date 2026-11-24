@@ -4,7 +4,6 @@ import java.time.LocalDateTime;
 import java.util.Map;
 import java.util.UUID;
 
-import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -94,10 +93,5 @@ public class TokenService {
     @Transactional
     public void revokeAll(UUID userId) {
         sessions.revokeAll(userId, Times.nowUtc());
-    }
-
-    /** 唯一约束冲突（P2002 对应）判断工具 */
-    public static boolean isUniqueViolation(Exception e) {
-        return e instanceof DataIntegrityViolationException;
     }
 }

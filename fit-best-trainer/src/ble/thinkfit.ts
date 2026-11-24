@@ -16,7 +16,6 @@
 export const TF_SERVICE = 'fff0'
 export const TF_NOTIFY = 'fff1'
 export const TF_WRITE = 'fff2'
-export const TF_NAME_PREFIX = 'TF-'
 
 export const TF_START = 0x02
 export const TF_END = 0x03
@@ -86,10 +85,6 @@ export function decodeFrame(input: Uint8Array): TfFrame | null {
     sub: input[2],
     data: input.slice(3, input.length - 2),
   }
-}
-
-export function frameBytes(frame: TfFrame): number[] {
-  return Array.from(encodeFrame(frame.cmd, frame.sub, Array.from(frame.data)))
 }
 
 /* ============ 指令构造 ============ */
@@ -195,11 +190,6 @@ export function parseHistoryCache(frame: TfFrame): number[] | null {
 export function parseWriteStatus(frame: TfFrame): boolean | null {
   if (frame.cmd !== CMD_NAME || frame.sub !== 0x01 || frame.data.length < 1) return null
   return frame.data[0] === 1
-}
-
-/** 是否为对应指令的空响应（ACK） */
-export function isAck(frame: TfFrame, cmd: number, sub: number): boolean {
-  return frame.cmd === cmd && frame.sub === sub && frame.data.length === 0
 }
 
 /* ============ 会话封装 ============ */

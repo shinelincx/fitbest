@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import type { PinBinding, PinMachine } from '../types'
-import { PIN_MACHINE_MAP, plateToWeight } from '../mock/pinMachines'
+import { plateToWeight } from '../mock/pinMachines'
 import { getBindingByPinId, removePinBinding, savePinBinding } from '../api'
 import { PIN_NAME_PREFIX, PIN_SERVICE, PIN_STATE_CHAR, parsePinPacket } from '../ble/pin'
 import { bleAdapter, type BleConnection } from '../platform/ble'
@@ -185,8 +185,4 @@ export function useSmartPin(machine: PinMachine | null, ownerId: string | null) 
     bindTo,
     unbind,
   }
-}
-
-export function pinMachineById(id: string | undefined): PinMachine | null {
-  return id ? PIN_MACHINE_MAP[id] ?? null : null
 }

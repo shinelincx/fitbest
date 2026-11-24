@@ -49,19 +49,6 @@ export function exercisePR(list: StrengthSession[], exerciseId: string): number 
     .reduce((max, s) => Math.max(max, s.e1rm), 0)
 }
 
-/** 某动作最近一次训练 */
-export function lastExerciseSession(
-  list: StrengthSession[],
-  exerciseId: string,
-): StrengthSession | null {
-  let latest: StrengthSession | null = null
-  for (const s of list) {
-    if (s.exerciseId !== exerciseId || s.sets.length === 0) continue
-    if (!latest || new Date(s.date).getTime() > new Date(latest.date).getTime()) latest = s
-  }
-  return latest
-}
-
 /** 本周容量 */
 export function weekVolume(list: StrengthSession[], isThisWeek: (iso: string) => boolean): number {
   return list.filter((s) => isThisWeek(s.date)).reduce((a, s) => a + s.volumeKg, 0)

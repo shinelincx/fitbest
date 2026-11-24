@@ -14,7 +14,5 @@ public interface MachineRepo extends JpaRepository<Machine, UUID> {
 
     Optional<Machine> findBySerialNo(String serialNo);
 
-    List<Machine> findByGymIdIn(List<UUID> gymIds);
-
     long countByGymId(UUID gymId);
 }

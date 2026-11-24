@@ -105,8 +105,6 @@ export interface StrengthSession {
   completed: boolean
 }
 
-export type AnySession = MachineSession | StrengthSession
-
 /** 插片式力量器械（配重片 + 智能插销） */
 export interface PinMachine {
   id: string

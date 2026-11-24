@@ -212,6 +212,5 @@ export const http = {
   post: <T>(path: string, body?: unknown, auth?: boolean) => request<T>('POST', path, body, { auth }),
   postForUser: <T>(userId: string, path: string, body: unknown) => request<T>('POST', path, body, { userId }),
   patch: <T>(path: string, body?: unknown, auth?: boolean) => request<T>('PATCH', path, body, { auth }),
-  delete: <T>(path: string, auth?: boolean) => request<T>('DELETE', path, undefined, { auth }),
   deleteForUser: <T>(userId: string, path: string) => request<T>('DELETE', path, undefined, { userId }),
 }

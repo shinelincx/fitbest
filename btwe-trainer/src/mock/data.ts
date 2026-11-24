@@ -2,9 +2,6 @@ import type {
   Exercise,
   Module,
   Plan,
-  SessionRecord,
-  User,
-  Race,
 } from '../types'
 
 // BTWE 八大固定功能性训练项目
@@ -133,86 +130,4 @@ export const PLANS: Plan[] = [
     modules: BTWE_MODULES,
     accent: 'danger',
   },
-]
-
-export const SESSIONS: SessionRecord[] = [
-  {
-    id: 's-20261030',
-    date: '2026-10-30',
-    planId: 'plan-intermediate',
-    moduleTimes: [218, 224, 231, 227],
-    runSplit: [168, 172, 176, 174],
-    totalTime: 900,
-    completed: true,
-    notes: '第 3 模块波比跳掉速，下次注意核心',
-  },
-  {
-    id: 's-20261028',
-    date: '2026-10-28',
-    planId: 'plan-intermediate',
-    moduleTimes: [205, 210, 218, 215],
-    runSplit: [160, 165, 170, 168],
-    totalTime: 848,
-    completed: true,
-  },
-  {
-    id: 's-20261026',
-    date: '2026-10-26',
-    planId: 'plan-intermediate',
-    moduleTimes: [220, 228, 235, 230],
-    runSplit: [172, 178, 182, 180],
-    totalTime: 913,
-    completed: true,
-    notes: '状态一般',
-  },
-  {
-    id: 's-20261023',
-    date: '2026-10-23',
-    planId: 'plan-intermediate',
-    moduleTimes: [198, 202, 208, 205],
-    runSplit: [155, 158, 162, 160],
-    totalTime: 813,
-    completed: true,
-  },
-  {
-    id: 's-20261021',
-    date: '2026-10-21',
-    planId: 'plan-intermediate',
-    moduleTimes: [212, 218, 224, 220],
-    runSplit: [165, 170, 174, 171],
-    totalTime: 874,
-    completed: false,
-  },
-  {
-    id: 's-20261019',
-    date: '2026-10-19',
-    planId: 'plan-intermediate',
-    moduleTimes: [190, 195, 200, 198],
-    runSplit: [148, 152, 156, 154],
-    totalTime: 783,
-    completed: true,
-    notes: 'PB！',
-  },
-]
-
-export const USER: User = {
-  id: 'u-001',
-  name: '李明',
-  avatar: 'LM',
-  level: 'intermediate',
-  targetRace: '2026 betterWE 南京站',
-  stats: {
-    totalSessions: 42,
-    totalKm: 134.4,
-    streak: 12,
-    bestModuleTime: 190,
-    bestFullTime: 783,
-  },
-}
-
-export const RACES: Race[] = [
-  { id: 'r-001', name: '2026 betterWE 南京站', city: '南京', date: '2026-10-24', status: 'past' },
-  { id: 'r-002', name: '2026 betterWE 长沙站', city: '长沙', date: '2026-06-14', status: 'past' },
-  { id: 'r-003', name: '2027 betterWE 上海站', city: '上海', date: '2027-03-15', status: 'registration' },
-  { id: 'r-004', name: '2027 betterWE 北京站', city: '北京', date: '2027-05-10', status: 'upcoming' },
 ]

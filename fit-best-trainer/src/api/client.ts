@@ -25,10 +25,6 @@ export function getAccessToken(): string | null {
   }
 }
 
-export function isAuthed(): boolean {
-  return Boolean(getAccessToken())
-}
-
 export function setTokens(access: string, refresh: string) {
   try {
     localStorage.setItem(REFRESH_KEY, refresh)

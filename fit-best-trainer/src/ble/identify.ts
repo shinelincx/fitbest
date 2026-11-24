@@ -22,18 +22,6 @@ const TYPE_CODES: Record<string, IdentifiedKind> = {
   PN: 'pin',
 }
 
-const KIND_LABEL: Record<IdentifiedKind, string> = {
-  treadmill: '跑步机',
-  rower: '划船机',
-  ski: '滑雪机',
-  bike: '风阻单车',
-  spin: '动感单车',
-  elliptical: '椭圆机',
-  upright: '健身车',
-  stair: '楼梯机',
-  pin: '智能插销',
-}
-
 /** 从广播名识别器械类别；未命中自有协议时按常见名兜底 */
 export function identifyDevice(name: string): IdentifiedKind | null {
   const m = /^FB-([A-Z]{2})-/i.exec(name.trim())
@@ -54,8 +42,4 @@ export function identifyDevice(name: string): IdentifiedKind | null {
   if (n.includes('stair')) return 'stair'
   if (n.includes('bike') || n.includes('cycle')) return 'bike'
   return null
-}
-
-export function kindLabel(kind: IdentifiedKind): string {
-  return KIND_LABEL[kind]
 }

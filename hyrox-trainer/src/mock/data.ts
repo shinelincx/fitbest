@@ -2,9 +2,6 @@ import type {
   Exercise,
   Module,
   Plan,
-  SessionRecord,
-  User,
-  Race,
 } from '../types'
 
 // HYROX 八大功能站点
@@ -137,86 +134,4 @@ export const PLANS: Plan[] = [
     modules: HYROX_MODULES,
     accent: 'danger',
   },
-]
-
-export const SESSIONS: SessionRecord[] = [
-  {
-    id: 's-20261030',
-    date: '2026-10-30',
-    planId: 'plan-intermediate',
-    moduleTimes: [430, 455, 440, 470, 435, 480, 450, 460],
-    runSplit: [268, 272, 276, 280, 274, 278, 282, 286],
-    totalTime: 3620,
-    completed: true,
-    notes: '第 6 组农夫行走掉速，下次注意握力',
-  },
-  {
-    id: 's-20261028',
-    date: '2026-10-28',
-    planId: 'plan-intermediate',
-    moduleTimes: [415, 440, 425, 455, 420, 465, 435, 445],
-    runSplit: [260, 264, 268, 272, 266, 270, 274, 278],
-    totalTime: 3500,
-    completed: true,
-  },
-  {
-    id: 's-20261026',
-    date: '2026-10-26',
-    planId: 'plan-intermediate',
-    moduleTimes: [440, 470, 455, 485, 450, 495, 465, 475],
-    runSplit: [275, 279, 283, 287, 281, 285, 289, 293],
-    totalTime: 3735,
-    completed: true,
-    notes: '状态一般，跑段偏慢',
-  },
-  {
-    id: 's-20261023',
-    date: '2026-10-23',
-    planId: 'plan-intermediate',
-    moduleTimes: [405, 430, 415, 445, 410, 455, 425, 435],
-    runSplit: [255, 259, 263, 267, 261, 265, 269, 273],
-    totalTime: 3420,
-    completed: true,
-    notes: 'PB！',
-  },
-  {
-    id: 's-20261021',
-    date: '2026-10-21',
-    planId: 'plan-intermediate',
-    moduleTimes: [425, 450, 435, 465, 430, 475, 445, 455],
-    runSplit: [265, 269, 273, 277, 271, 275, 279, 283],
-    totalTime: 3580,
-    completed: false,
-  },
-  {
-    id: 's-20261019',
-    date: '2026-10-19',
-    planId: 'plan-intermediate',
-    moduleTimes: [390, 415, 400, 430, 395, 440, 410, 420],
-    runSplit: [248, 252, 256, 260, 254, 258, 262, 266],
-    totalTime: 3300,
-    completed: true,
-  },
-]
-
-export const USER: User = {
-  id: 'u-001',
-  name: '李明',
-  avatar: 'LM',
-  level: 'intermediate',
-  targetRace: '2027 HYROX 上海站',
-  stats: {
-    totalSessions: 28,
-    totalKm: 96.5,
-    streak: 9,
-    bestModuleTime: 430,
-    bestFullTime: 3300,
-  },
-}
-
-export const RACES: Race[] = [
-  { id: 'r-001', name: '2026 HYROX 上海站', city: '上海', date: '2026-10-24', status: 'past' },
-  { id: 'r-002', name: '2026 HYROX 深圳站', city: '深圳', date: '2026-06-14', status: 'past' },
-  { id: 'r-003', name: '2027 HYROX 上海站', city: '上海', date: '2027-03-15', status: 'registration' },
-  { id: 'r-004', name: '2027 HYROX 北京站', city: '北京', date: '2027-05-10', status: 'upcoming' },
 ]

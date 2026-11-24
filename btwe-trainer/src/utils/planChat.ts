@@ -2,7 +2,7 @@
 import type { Plan } from '../types'
 import type { RemoteGeneratedPlan } from '../api'
 import { BTWE_MODULES, PLANS } from '../mock/data'
-import { loadJSON, removeKey, saveJSON } from './storage'
+import { loadJSON, saveJSON } from './storage'
 
 export interface PlanAnswers {
   goal: 'finish' | 'pb'
@@ -214,10 +214,6 @@ export function getCustomPlan(): CustomPlan | null {
 
 export function saveCustomPlan(plan: CustomPlan) {
   saveJSON(CUSTOM_KEY, plan)
-}
-
-export function clearCustomPlan() {
-  removeKey(CUSTOM_KEY)
 }
 
 export function selectPlan(id: string) {

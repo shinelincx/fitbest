@@ -17,7 +17,6 @@ import com.ifitbest.server.infra.persistence.SegmentType;
 import com.ifitbest.server.infra.persistence.TrainingRecord;
 import com.ifitbest.server.infra.persistence.TrainingRecordRepo;
 import com.ifitbest.server.infra.persistence.WorkoutMode;
-import com.ifitbest.server.module.record.RecordsService;
 import com.ifitbest.server.config.FitbestProperties;
 
 /** AI 教练 —— LLM（可插拔）+ 本地规则降级 + 用户训练数据摘要，契约一致 */
@@ -270,13 +269,5 @@ public class CoachService {
         } catch (Exception e) {
             return List.of();
         }
-    }
-
-    public static List<Integer> parseListSafe(String json) {
-        return parseIntList(json);
-    }
-
-    public static Object parseJsonSafe(String json) {
-        return RecordsService.parseJson(json);
     }
 }

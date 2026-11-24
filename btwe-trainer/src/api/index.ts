@@ -1,13 +1,12 @@
 import type {
-  Exercise,
   Plan,
   SessionRecord,
   User,
 } from '../types'
-import { EXERCISES, PLANS } from '../mock/data'
+import { PLANS } from '../mock/data'
 import { loadJSON, removeKey, saveJSON } from '../utils/storage'
 import { accountStorageKey, addActivity, clearActivity } from '../utils/sso'
-import { currentUserId, http, isAuthed, setTokens, clearTokens } from './client'
+import { currentUserId, http, isAuthed, setTokens } from './client'
 import { createTrainingRecords } from '../../../race-trainer-shared/trainingRecords'
 import { createRaceCalendar } from '../../../race-trainer-shared/events'
 import { removeDeviceFromOutbox } from './deviceSync'
@@ -58,18 +57,10 @@ function mergeBackendUser(backend: BackendMe): User {
   }
 }
 
-// ---------- Exercises / Plans（后端暂无路由，返回本地） ----------
-
-export async function fetchExercises(): Promise<Exercise[]> {
-  return EXERCISES
-}
+// ---------- 本地训练计划 ----------
 
 export async function fetchPlans(): Promise<Plan[]> {
   return PLANS
-}
-
-export async function fetchPlan(id: string): Promise<Plan | undefined> {
-  return PLANS.find((p) => p.id === id)
 }
 
 // ---------- Coach 计划引擎 ----------
@@ -287,35 +278,6 @@ export async function loginWithSms(phone: string, code: string): Promise<LoginRe
     // ignore
   }
   return res
-}
-
-export async function loginWithPassword(account: string, password: string): Promise<LoginResult> {
-  const res = await http.post<LoginResult>(
-    '/auth/password/login',
-    { account, password },
-    false
-  )
-  setTokens(res.accessToken, res.refreshToken)
-  try {
-    saveJSON('fitbest:session', res.user.id)
-    const users = loadJSON<Array<{ id: string; nickname: string; avatar?: string }>>('fitbest:users', [])
-    const idx = users.findIndex((u) => u.id === res.user.id)
-    const record = { id: res.user.id, nickname: res.user.nickname, avatar: res.user.avatar ?? undefined }
-    if (idx >= 0) users[idx] = record
-    else users.push(record)
-    saveJSON('fitbest:users', users)
-  } catch {
-    // ignore
-  }
-  return res
-}
-
-export async function logout(): Promise<void> {
-  if (isAuthed()) {
-    const refresh = localStorage.getItem('fitbest:refresh') ?? undefined
-    http.post('/auth/logout', { refreshToken: refresh }).catch(() => {})
-  }
-  clearTokens()
 }
 
 // ---------- 本地数据清理 ----------

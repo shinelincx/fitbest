@@ -143,8 +143,3 @@ export const PIN_MACHINE_MAP: Record<string, PinMachine> = PIN_MACHINES.reduce(
 export function plateToWeight(m: PinMachine, plate: number): number {
   return plate * m.plateKg
 }
-
-/** 重量 → 就近档位 */
-export function weightToPlate(m: PinMachine, weight: number): number {
-  return Math.max(1, Math.min(m.plates, Math.round(weight / m.plateKg)))
-}

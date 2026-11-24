@@ -1,5 +1,5 @@
 import i18n from '../i18n'
-import type { MachineSession, MachineType } from '../types'
+import type { MachineSession } from '../types'
 
 // 本周（周一 00:00 起）起点
 export function startOfWeek(base = new Date()): Date {
@@ -13,31 +13,6 @@ export function startOfWeek(base = new Date()): Date {
 export function isThisWeek(iso: string): boolean {
   const t = new Date(iso).getTime()
   return t >= startOfWeek().getTime() && t <= Date.now()
-}
-
-export interface Summary {
-  count: number
-  durationSec: number
-  distanceM: number
-  calories: number
-  avgHr: number
-}
-
-export function summarize(list: MachineSession[]): Summary {
-  const withHr = list.filter((s) => s.avgHr > 0)
-  return {
-    count: list.length,
-    durationSec: list.reduce((a, s) => a + s.durationSec, 0),
-    distanceM: list.reduce((a, s) => a + s.distanceM, 0),
-    calories: list.reduce((a, s) => a + s.calories, 0),
-    avgHr: withHr.length
-      ? Math.round(withHr.reduce((a, s) => a + s.avgHr, 0) / withHr.length)
-      : 0,
-  }
-}
-
-export function byMachine(list: MachineSession[], machine: MachineType): MachineSession[] {
-  return list.filter((s) => s.machine === machine)
 }
 
 export function formatDistance(m: number): string {

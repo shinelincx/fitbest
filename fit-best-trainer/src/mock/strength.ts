@@ -87,6 +87,3 @@ export const EXERCISE_MAP: Record<string, StrengthExercise> = STRENGTH_EXERCISES
   },
   {} as Record<string, StrengthExercise>,
 )
-
-/** 默认动作（未指定时进入的第一个） */
-export const DEFAULT_EXERCISE_ID = 'bench-press'
