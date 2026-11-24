@@ -204,8 +204,8 @@ def pull(namespace, tag, server_digest, web_digest):
 
             def import_image(name):
                 reference = references[name]
-                # Leave time for Compose health checks within the 20-minute deploy job.
-                subprocess.run(["docker", "pull", reference], check=True, timeout=840)
+                # Leave time for Compose health checks within the 32-minute deploy job.
+                subprocess.run(["docker", "pull", reference], check=True, timeout=1500)
                 revision = subprocess.check_output(
                     ["docker", "image", "inspect", "--format",
                      '{{index .Config.Labels "org.opencontainers.image.revision"}}', reference],
