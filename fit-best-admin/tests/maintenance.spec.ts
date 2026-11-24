@@ -1,6 +1,6 @@
 import { expect, test, type Page } from '@playwright/test'
 import type { AdminInfo } from '../src/api/admin'
-import type { WebsiteContent } from '../src/api/system'
+import type { MachineNavigationConfig, WebsiteContent } from '../src/api/system'
 
 const platformAdmin: AdminInfo = {
   id: 'platform-1', name: '测试管理员', phone: '13900000001', role: 'super',
@@ -13,6 +13,52 @@ function useFixtureAccount(page: Page, admin: AdminInfo) {
     localStorage.setItem('fitbest_admin_info', JSON.stringify(account))
   }, admin)
 }
+
+test('可编辑器械导航、保存蓝牙规则并查看广播名的协议偏好', async ({ page }) => {
+  await useFixtureAccount(page, platformAdmin)
+  const config: MachineNavigationConfig = {
+    machineTypes: [{ code: 'ski', names: { 'zh-CN': '滑雪机', en: 'Ski Erg' }, sortOrder: 30, visible: true }],
+    bleRules: [], resistanceDisabledPatterns: [],
+  }
+  await page.route('**/admin/system/dictionary/machine-types', route => route.fulfill({ json: [] }))
+  await page.route('**/admin/system/dictionary/regions', route => route.fulfill({ json: [] }))
+  await page.route('**/admin/system/settings', route => route.fulfill({ json: { defaultGymTimezone: 'Asia/Shanghai' } }))
+  await page.route('**/admin/system/machine-navigation', route => route.fulfill({ json: config }))
+  await page.route('**/admin/system/machine-navigation/items/ski', route => {
+    Object.assign(config.machineTypes[0], route.request().postDataJSON())
+    return route.fulfill({ json: config })
+  })
+  await page.route('**/admin/system/machine-navigation/ble-rules', route => {
+    config.bleRules.push({ ...route.request().postDataJSON(), id: 'new-rule' })
+    return route.fulfill({ json: config })
+  })
+  await page.route('**/admin/system/machine-navigation/preview?*', route => route.fulfill({
+    json: { matchedRules: config.bleRules, resistanceDisabled: false },
+  }))
+
+  await page.goto('/fit-best/system/catalog')
+  await page.getByRole('button', { name: '编辑导航 滑雪机' }).click()
+  await page.getByLabel('英语').fill('Ski trainer')
+  const navigationSaved = page.waitForRequest('**/admin/system/machine-navigation/items/ski')
+  await page.getByRole('button', { name: '保存导航' }).click()
+  expect((await navigationSaved).postDataJSON()).toMatchObject({ names: { 'zh-CN': '滑雪机', en: 'Ski trainer' }, visible: true })
+
+  await page.getByRole('button', { name: '新增规则' }).click()
+  const dialog = page.getByRole('dialog', { name: '新增蓝牙规则' })
+  await dialog.getByLabel('器械类型').click()
+  await page.getByText('滑雪机', { exact: true }).click()
+  await dialog.getByLabel('广播名规则').fill(' Kpower-00028\n\nkPOWER-test ')
+  await dialog.getByLabel('优先级').fill('20')
+  const ruleSaved = page.waitForRequest('**/admin/system/machine-navigation/ble-rules')
+  await dialog.getByRole('button', { name: '保存规则' }).click()
+  expect((await ruleSaved).postDataJSON()).toEqual({ machineType: 'ski', match: 'exact',
+    patterns: ['Kpower-00028', 'kPOWER-test'], preferredProtocol: 'FTMS', priority: 20, enabled: true })
+  await expect(dialog).toHaveCount(0)
+
+  await page.getByLabel('设备广播名').fill('kPOWER-00028')
+  await page.getByRole('button', { name: '检查已保存规则' }).click()
+  await expect(page.getByText('滑雪机 · FTMS · 优先级 20（生效）')).toBeVisible()
+})
 
 test('账号创建表单提交组织、门店与菜单权限并展示一次性设密链接', async ({ page }) => {
   await useFixtureAccount(page, platformAdmin)

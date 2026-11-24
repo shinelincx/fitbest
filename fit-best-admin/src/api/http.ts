@@ -31,6 +31,7 @@ instance.interceptors.request.use((config) => {
 instance.interceptors.response.use(
   (res: AxiosResponse) => res.data,
   (error) => {
+    if (axios.isCancel(error)) return Promise.reject(error)
     const status = error.response?.status
     const data = error.response?.data as { message?: string; code?: number } | undefined
 

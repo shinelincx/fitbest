@@ -2,6 +2,7 @@ import http from './http'
 import type { AdminInfo } from './admin'
 
 const prefix = '/admin/system'
+const navigation = prefix + '/machine-navigation'
 
 export interface Organization {
   id: string
@@ -28,6 +29,46 @@ export interface MachineTypeItem {
   label: string
   sortOrder: number
   selectable: boolean
+}
+
+export interface NavigationItem {
+  code: string
+  names: Record<string, string>
+  sortOrder: number
+  visible: boolean
+}
+
+export interface BluetoothRuleInput {
+  machineType: string
+  match: 'exact' | 'prefix' | 'contains'
+  patterns: string[]
+  preferredProtocol: 'FTMS' | 'PRIVATE'
+  priority: number
+  enabled: boolean
+}
+
+export interface BluetoothRule extends BluetoothRuleInput {
+  id: string
+}
+
+export interface MachineNavigationConfig {
+  machineTypes: NavigationItem[]
+  bleRules: BluetoothRule[]
+  resistanceDisabledPatterns: string[]
+}
+
+export interface MachineNavigationPreview {
+  matchedRules: BluetoothRule[]
+  resistanceDisabled: boolean
+}
+
+export const machineNavigationApi = {
+  get: (signal?: AbortSignal) => http.get<MachineNavigationConfig>(navigation, { signal }),
+  saveItem: ({ code, ...data }: NavigationItem) => http.put<MachineNavigationConfig>(`${navigation}/items/${code}`, data),
+  createRule: (data: BluetoothRuleInput) => http.post<MachineNavigationConfig>(`${navigation}/ble-rules`, data),
+  updateRule: (id: string, data: BluetoothRuleInput) => http.put<MachineNavigationConfig>(`${navigation}/ble-rules/${id}`, data),
+  saveResistance: (patterns: string[]) => http.put<MachineNavigationConfig>(`${navigation}/resistance-disabled-patterns`, { patterns }),
+  preview: (name: string) => http.get<MachineNavigationPreview>(`${navigation}/preview`, { params: { name } }),
 }
 
 export interface Region {
