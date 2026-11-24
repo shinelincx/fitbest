@@ -57,7 +57,8 @@ class FlywayBaselinePostgresTest {
             assertThat(exists(schema, "feedback")).isTrue();
             assertThat(exists(schema, "feedback_attachments")).isTrue();
             assertThat(exists(schema, "feedback_history")).isTrue();
-            assertThat(guarded(schema).info().current().getVersion().getVersion()).isEqualTo("15");
+            assertThat(exists(schema, "machine_navigation")).isTrue();
+            assertThat(guarded(schema).info().pending()).isEmpty();
             try (var connection = DriverManager.getConnection(url, user, password);
                  var statement = connection.prepareStatement(
                      "select password_hash, session_version, site_editor, site_publisher, feedback_manager from "
