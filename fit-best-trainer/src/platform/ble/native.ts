@@ -1,6 +1,6 @@
 import { Capacitor } from '@capacitor/core'
 import { BleClient } from '@capacitor-community/bluetooth-le'
-import type { RequestBleDeviceOptions } from '@capacitor-community/bluetooth-le'
+import type { BleService, RequestBleDeviceOptions } from '@capacitor-community/bluetooth-le'
 import { toDataView, toUint8Array } from './data'
 import type {
   BleAdapter,
@@ -15,13 +15,24 @@ let initialization: Promise<void> | undefined
 
 async function ensureReady(): Promise<void> {
   if (!initialization) {
-    initialization = BleClient.initialize({ androidNeverForLocation: true })
+    initialization = BleClient.initialize({ androidNeverForLocation: true }).catch((error) => {
+      initialization = undefined
+      throw error
+    })
   }
   await initialization
 
   if (Capacitor.getPlatform() === 'android' && !(await BleClient.isEnabled())) {
     await BleClient.requestEnable()
   }
+}
+
+export async function scanNearbyDevices(onDevice: (device: BleDeviceRef, services: string[]) => void) {
+  await ensureReady()
+  await BleClient.requestLEScan({}, ({ device, localName, uuids }) => {
+    onDevice({ id: device.deviceId, name: device.name || localName }, uuids ?? [])
+  })
+  return () => BleClient.stopLEScan()
 }
 
 class NativeBleCharacteristic implements BleCharacteristic {
@@ -62,16 +73,24 @@ class NativeBleCharacteristic implements BleCharacteristic {
       toDataView(bytes),
     )
   }
+
+  async writeWithResponse(bytes: Uint8Array): Promise<void> {
+    await BleClient.write(this.deviceId, this.serviceUuid, this.characteristicUuid, toDataView(bytes))
+  }
+
+  async read(): Promise<Uint8Array> {
+    return toUint8Array(await BleClient.read(this.deviceId, this.serviceUuid, this.characteristicUuid))
+  }
 }
 
 class NativeBleConnection implements BleConnection {
   readonly device: BleDeviceRef
-  private readonly services: Set<string>
+  private readonly services: Map<string, BleService>
   private disconnectPromise?: Promise<void>
 
-  constructor(device: BleDeviceRef, serviceUuids: string[]) {
+  constructor(device: BleDeviceRef, services: BleService[]) {
     this.device = device
-    this.services = new Set(serviceUuids.map(normalizeUuid))
+    this.services = new Map(services.map((service) => [normalizeUuid(service.uuid), service]))
   }
 
   hasService(uuid: string): boolean {
@@ -80,7 +99,7 @@ class NativeBleConnection implements BleConnection {
 
   async isConnected(): Promise<boolean> {
     try {
-      const devices = await BleClient.getConnectedDevices(Array.from(this.services))
+      const devices = await BleClient.getConnectedDevices(Array.from(this.services.keys()))
       return devices.some((device) => device.deviceId === this.device.id)
     } catch {
       return false
@@ -93,6 +112,10 @@ class NativeBleConnection implements BleConnection {
       normalizeUuid(serviceUuid),
       normalizeUuid(characteristicUuid),
     )
+  }
+
+  async listCharacteristics(serviceUuid: string) {
+    return this.services.get(normalizeUuid(serviceUuid))?.characteristics ?? []
   }
 
   disconnect(): Promise<void> {
@@ -128,7 +151,11 @@ export class NativeBleAdapter implements BleAdapter {
   async connect(device: BleDeviceRef, onDisconnect: () => void): Promise<BleConnection> {
     await ensureReady()
     await BleClient.connect(device.id, () => onDisconnect())
-    const services = await BleClient.getServices(device.id)
-    return new NativeBleConnection(device, services.map((service) => service.uuid))
+    try {
+      return new NativeBleConnection(device, await BleClient.getServices(device.id))
+    } catch (error) {
+      await BleClient.disconnect(device.id).catch(() => undefined)
+      throw error
+    }
   }
 }

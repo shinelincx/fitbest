@@ -21,12 +21,20 @@ export interface BleConnection {
   device: BleDeviceRef
   hasService(uuid: string): boolean
   getCharacteristic(serviceUuid: string, characteristicUuid: string): Promise<BleCharacteristic>
+  listCharacteristics(serviceUuid: string): Promise<BleCharacteristicInfo[]>
   isConnected(): Promise<boolean>
   disconnect(): Promise<void>
 }
 
+export interface BleCharacteristicInfo {
+  uuid: string
+  properties: { notify?: boolean; indicate?: boolean; write?: boolean; writeWithoutResponse?: boolean }
+}
+
 export interface BleCharacteristic {
+  read?(): Promise<Uint8Array>
   startNotifications(callback: (bytes: Uint8Array) => void): Promise<() => void>
   stopNotifications(): Promise<void>
   writeWithoutResponse(bytes: Uint8Array): Promise<void>
+  writeWithResponse?(bytes: Uint8Array): Promise<void>
 }

@@ -53,6 +53,14 @@ class WebBleCharacteristic implements BleCharacteristic {
     await this.characteristic.writeValueWithoutResponse(toDataView(bytes))
   }
 
+  async writeWithResponse(bytes: Uint8Array): Promise<void> {
+    await this.characteristic.writeValueWithResponse(toDataView(bytes))
+  }
+
+  async read(): Promise<Uint8Array> {
+    return toUint8Array(await this.characteristic.readValue())
+  }
+
   private clearNotificationListener(): void {
     if (!this.notificationListener) return
     this.characteristic.removeEventListener('characteristicvaluechanged', this.notificationListener)
@@ -88,6 +96,12 @@ class WebBleConnection implements BleConnection {
     const service = await this.server.getPrimaryService(normalizeUuid(serviceUuid))
     const characteristic = await service.getCharacteristic(normalizeUuid(characteristicUuid))
     return new WebBleCharacteristic(characteristic)
+  }
+
+  async listCharacteristics(serviceUuid: string) {
+    if (!this.hasService(serviceUuid)) return []
+    const service = await this.server.getPrimaryService(normalizeUuid(serviceUuid))
+    return service.getCharacteristics()
   }
 
   disconnect(): Promise<void> {

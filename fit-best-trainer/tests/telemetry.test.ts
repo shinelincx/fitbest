@@ -6,32 +6,145 @@ import {
   parseTreadmillData,
 } from '../src/ble/ftms'
 import { parsePinPacket } from '../src/ble/pin'
+import { parsePrivateTreadmillCountdown, parsePrivateTreadmillData, parsePrivateTreadmillLimits, privateTreadmillControl, privateTreadmillSetTargets, selectPrivateTreadmillCharacteristics } from '../src/ble/privateTreadmill'
+import { parseFtmsTreadmillRange, sendFtmsControl } from '../src/ble/ftmsControl'
+import { applyTreadmillCounterOffsets, formatTreadmillPace, resumeTreadmillCounters } from '../src/ble/treadmillCounters'
+import { intervalProgress, trainingGoal } from '../src/utils/trainingGoals'
 
 const packet = (...bytes: number[]) => new Uint8Array(bytes)
 
+it('用本次运动累计值推进距离、时间和间歇目标', () => {
+  const config = { work: 30, rest: 10, rounds: 2 }
+  expect(intervalProgress(30, config)).toMatchObject({ phase: 'rest', remain: 10, round: 1 })
+  expect(intervalProgress(40, config)).toMatchObject({ phase: 'work', remain: 30, round: 2 })
+  expect(intervalProgress(80, config)).toEqual({ phase: 'rest', remain: 0, round: 2, total: 80 })
+  expect(trainingGoal('interval', 80, 0, 60, 1000, 80).reached).toBe(true)
+  expect(trainingGoal('time', 59, 1200, 60, 1000, 80).reached).toBe(false)
+  expect(trainingGoal('distance', 20, 1000, 60, 1000, 80)).toMatchObject({ progress: 100, reached: true })
+})
+
+it('读取 FTMS 调速和有符号坡度范围及步长', () => {
+  expect(parseFtmsTreadmillRange(packet(80, 0, 64, 6, 10, 0), 'speed')).toEqual({ min: 0.8, max: 16, step: 0.1 })
+  expect(parseFtmsTreadmillRange(packet(236, 255, 200, 0, 5, 0), 'incline')).toEqual({ min: -2, max: 20, step: 0.5 })
+})
+
+it('恢复后从暂停累计值继续，排除倒计时阶段的差值和器械归零', () => {
+  const before = { elapsedTime: 19, distance: 120, calories: 6, strokeCount: 36 }
+  const resumed = { elapsedTime: 20, distance: 1, calories: 0, strokeCount: 37 }
+  const offsets = resumeTreadmillCounters(before, resumed, {})
+  expect(applyTreadmillCounterOffsets(resumed, offsets)).toEqual(before)
+  expect(applyTreadmillCounterOffsets({ elapsedTime: 22, distance: 6, calories: 1, strokeCount: 41 }, offsets))
+    .toEqual({ elapsedTime: 21, distance: 125, calories: 7, strokeCount: 40 })
+  expect(applyTreadmillCounterOffsets(resumed, resumeTreadmillCounters({}, resumed, {})))
+    .toEqual({ elapsedTime: 0, distance: 0, calories: 0, strokeCount: 0 })
+})
+
+it('用总分钟和秒显示每公里配速', () => {
+  expect(formatTreadmillPace(3600 / 6)).toBe('10:00')
+  expect(formatTreadmillPace(3600 / 0.8)).toBe('75:00')
+  expect(formatTreadmillPace(Infinity)).toBe('—')
+})
+
+it('FTMS 控制权被拒绝后不发送启动指令', async () => {
+  let receive: (bytes: Uint8Array) => void = () => undefined
+  const sent: number[][] = []
+  await expect(sendFtmsControl({
+    async startNotifications(callback) { receive = callback; return () => undefined },
+    async stopNotifications() {},
+    async writeWithoutResponse() { throw new Error('Unexpected write without response') },
+    async writeWithResponse(bytes) {
+      sent.push(Array.from(bytes))
+      receive(packet(0x80, bytes[0], 0x05))
+    },
+  }, [[0x00], [0x07]])).rejects.toThrow('FTMS control rejected')
+  expect(sent).toEqual([[0x00]])
+})
+
+describe('NewAiFitbest 跑步机私有协议', () => {
+  it('识别实机启动和继续时的三秒倒计时', () => {
+    const frames = ['025102035003', '025102025103', '025102015203', '025102005303', '025106025503']
+    expect(frames.map((frame) => parsePrivateTreadmillCountdown(Buffer.from(frame, 'hex'))))
+      .toEqual([3, 2, 1, undefined, undefined])
+  })
+  it('读取器械速度和坡度范围，并按旧版生成调节帧', () => {
+    expect(parsePrivateTreadmillLimits(packet(2, 0x50, 2, 160, 10, 0, 0, 3))).toEqual({ speed: { min: 1, max: 16 } })
+    expect(parsePrivateTreadmillLimits(packet(2, 0x50, 3, 15, 0xfe, 0, 3))).toEqual({ incline: { min: -2, max: 15 } })
+    expect(privateTreadmillSetTargets(6.5, -1)).toEqual(packet(2, 0x53, 2, 65, 255, 239, 3))
+  })
+  it('生成与旧版一致的启停帧', () => {
+    expect(privateTreadmillControl('start')).toEqual(packet(2, 0x53, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0x52, 3))
+    expect(privateTreadmillControl('stop')).toEqual(packet(2, 0x53, 3, 0x50, 3))
+    expect(privateTreadmillControl('pause')).toEqual(packet(2, 0x53, 0x0a, 0x59, 3))
+    expect(privateTreadmillControl('resume')).toEqual(packet(2, 0x53, 9, 0x5a, 3))
+  })
+  it('根据通知和写入属性发现通道，并优先选用兼容的标准私有 UUID', () => {
+    const notify = { uuid: 'fff3', properties: { indicate: true } }
+    const write = { uuid: 'fff4', properties: { write: true } }
+    const preferredWrite = { uuid: 'FFF2', properties: { writeWithoutResponse: true } }
+    expect(selectPrivateTreadmillCharacteristics([notify, write])).toEqual({ notify, write })
+    expect(selectPrivateTreadmillCharacteristics([notify, write, preferredWrite])).toEqual({ notify, write: preferredWrite })
+    expect(selectPrivateTreadmillCharacteristics([notify])).toBeNull()
+  })
+  it('按旧版字段解码运动状态和扩展距离', () => {
+    const data = packet(2, 0x51, 3, 85, 0, 44, 1, 123, 0x80, 199, 0, 100, 0, 132, 0, 0, 3)
+    expect(parsePrivateTreadmillData(data)).toEqual({
+      speed: 8.5, incline: 0, elapsedTime: 300, distance: 1230, calories: 19.9, strokeCount: 100, heartRate: 132,
+    })
+    expect(parsePrivateTreadmillData(data.subarray(0, 16))).toBeNull()
+  })
+})
+
 describe('FTMS 与心率协议', () => {
   it('解析跑步机速度、距离和器械时间', () => {
-    const data = packet(0x05, 0x80, 0xd2, 0x04, 0x01, 0x02, 0x03, 0x2c, 0x01)
+    const data = packet(0x04, 0x04, 0xd2, 0x04, 0x01, 0x02, 0x03, 0x2c, 0x01)
     expect(parseTreadmillData(data)).toEqual({ speed: 12.34, distance: 0x030201, elapsedTime: 300 })
+  })
+
+  it('解析 TF04 实机通知的字段布局和三字节步数扩展', () => {
+    const captured = Buffer.from('9C25000000000000000000000000000000000000000000000000', 'hex')
+    expect(parseTreadmillData(captured)).toEqual({ speed: 0, distance: 0, incline: 0, calories: 0, heartRate: 0, elapsedTime: 0, strokeCount: 0 })
+    const moving = Buffer.from(captured)
+    moving.writeUInt16LE(650, 2)
+    moving.writeUIntLE(140, 4, 3)
+    moving.writeUInt16LE(12, 15)
+    moving[20] = 126
+    moving.writeUInt16LE(85, 21)
+    moving.writeUIntLE(102, 23, 3)
+    expect(parseTreadmillData(moving)).toEqual({ speed: 6.5, distance: 140, incline: 0, calories: 12, heartRate: 126, elapsedTime: 85, strokeCount: 102 })
   })
 
   it('解析划船机小端字段、有符号功率和卡路里', () => {
     const data = packet(
-      0xa5, 0x82,
-      0x3c, 0x00,
-      0xac, 0x0d,
+      0x2c, 0x09,
+      0x3c, 0x32, 0x00,
       0xa0, 0x0f, 0x00,
+      0x78, 0x00,
       0xe7, 0xff,
-      0x7b, 0x00,
+      0x7b, 0x00, 0x00, 0x00, 0x00,
       0x58, 0x02,
     )
     expect(parseRowerData(data)).toEqual({
       cadence: 30,
-      speed: 3.5,
+      strokeCount: 50,
+      pace: 120,
+      speed: 15,
       distance: 4000,
       power: -25,
       calories: 123,
       elapsedTime: 600,
+    })
+  })
+
+  it('按 Kpower-00028 实机通知解析划桨字段和累积读数', () => {
+    const data = Buffer.from('7C0B92C8020F24005B000900D401D301840376077300A206', 'hex')
+    expect(parseRowerData(data)).toMatchObject({
+      cadence: 73,
+      strokeCount: 712,
+      distance: 9231,
+      pace: 91,
+      power: 468,
+      calories: 900,
+      elapsedTime: 1698,
     })
   })
 

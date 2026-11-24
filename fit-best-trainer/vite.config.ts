@@ -17,6 +17,13 @@ export default defineConfig(({ mode }) => {
   return {
     base: './',
     server: {
+      proxy: {
+        '/fit-best/api/v1': {
+          target: env.FITBEST_DEV_API_TARGET || 'http://127.0.0.1:8080',
+          changeOrigin: true,
+          rewrite: (path) => path.replace(/^\/fit-best/, ''),
+        },
+      },
       fs: {
         allow: [searchForWorkspaceRoot(process.cwd()), fileURLToPath(new URL('../race-trainer-shared', import.meta.url))],
       },

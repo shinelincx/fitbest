@@ -1,4 +1,5 @@
 import { useTranslation } from 'react-i18next'
+import { Capacitor } from '@capacitor/core'
 import { Link, useNavigate } from 'react-router-dom'
 import { ArrowLeft, Bluetooth, Loader2, Radar, RefreshCw } from 'lucide-react'
 import { useDevices } from '../context/DeviceContext'
@@ -66,12 +67,12 @@ export default function Discover() {
                 >
                   {t('开始搜索')}
                 </button>
-                <button
+                {!Capacitor.isNativePlatform() && <button
                   onClick={() => startScan(true)}
                   className="mt-3 block w-full text-[13px] text-text-sub underline underline-offset-2"
                 >
                   {t('找不到设备？显示附近全部蓝牙设备')}
-                </button>
+                </button>}
               </>
             ) : (
               <>

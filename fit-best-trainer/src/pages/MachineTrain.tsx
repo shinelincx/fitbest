@@ -1,4 +1,5 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
+import { createPortal } from 'react-dom'
 import { useTranslation } from 'react-i18next'
 import { useNavigate, useParams } from 'react-router-dom'
 import {
@@ -29,6 +30,9 @@ import { formatTime } from '../utils/format'
 import { getPrefs } from '../utils/prefs'
 import { beep, vibrate } from '../utils/feedback'
 import { useToast } from '../components/Toast'
+import { applyTreadmillCounterOffsets, formatTreadmillPace, resumeTreadmillCounters, type TreadmillCounterOffsets } from '../ble/treadmillCounters'
+import type { DeviceMetrics } from '../ble/ftms'
+import { intervalProgress, trainingGoal } from '../utils/trainingGoals'
 
 const MACHINE_ICON = {
   treadmill: TreadmillIcon,
@@ -88,7 +92,7 @@ export default function MachineTrain() {
     fetchSessions().then(setHistory)
   }, [])
 
-  const { devices, disconnectDevice, startDevice, stopDevice } = useDevices()
+  const { devices, disconnectDevice, startDevice, stopDevice, setTreadmillTargets, setFtmsTreadmillTarget } = useDevices()
   const device = machine ? devices[machineType] : undefined
   const hrDevice = devices.heartRate
 
@@ -99,6 +103,12 @@ export default function MachineTrain() {
 
   const [running, setRunning] = useState(false)
   const [paused, setPaused] = useState(false)
+  const [pausedTreadmill, setPausedTreadmill] = useState<{ metrics: DeviceMetrics; heartRate: number } | null>(null)
+  const [resumeFrom, setResumeFrom] = useState<DeviceMetrics | null>(null)
+  const [treadmillOffsets, setTreadmillOffsets] = useState<TreadmillCounterOffsets>({})
+  const [startBaselinePending, setStartBaselinePending] = useState(false)
+  const [localCountdown, setLocalCountdown] = useState<{ seconds: number; resume: boolean } | null>(null)
+  const countdownAbort = useRef<AbortController | null>(null)
   const [finished, setFinished] = useState<MachineSession | null>(null)
   const [saving, setSaving] = useState(false)
   const [confirmOpen, setConfirmOpen] = useState(false)
@@ -106,7 +116,8 @@ export default function MachineTrain() {
 
   useKeepAwake(running && !paused && !finished)
   useNativeBack(true, () => {
-    if (confirmOpen) setConfirmOpen(false)
+    if (countdownAbort.current) countdownAbort.current.abort()
+    else if (confirmOpen) setConfirmOpen(false)
     else if (running || paused) setConfirmOpen(true)
     else navigate(-1)
   })
@@ -117,10 +128,64 @@ export default function MachineTrain() {
   const resultRef = useRef<MachineSession | null>(null)
   const finishingRef = useRef(false)
   const phaseRef = useRef<'work' | 'rest'>('work')
+  const controlPending = useRef(false)
+  const [adjustingTreadmill, setAdjustingTreadmill] = useState(false)
+  const [pendingTarget, setPendingTarget] = useState<{ field: 'speed' | 'incline'; value: number } | null>(null)
+  const treadmillLimits = device?.treadmillLimits
 
   const Icon = MACHINE_ICON[machineType] ?? Gauge
-  const metrics = device?.metrics ?? {}
-  const hr = hrDevice.metrics.heartRate ?? 0
+  const liveMetrics = device?.metrics ?? {}
+  const countdown = localCountdown?.seconds ?? (machineType === 'treadmill' && running && !paused ? liveMetrics.privateTreadmillCountdown : undefined)
+
+  useEffect(() => {
+    if (!pendingTarget) return
+    const actual = device?.metrics[pendingTarget.field]
+    if (!running || paused || !device?.connected || (actual !== undefined && Math.abs(actual - pendingTarget.value) < 0.01)) {
+      setPendingTarget(null)
+    }
+  }, [device, paused, pendingTarget, running])
+
+  useEffect(() => {
+    if (!pendingTarget) return
+    const timer = window.setTimeout(() => {
+      setPendingTarget(null)
+      toast(t('器械尚未确认调节，请查看器械面板'))
+    }, 5000)
+    return () => window.clearTimeout(timer)
+  }, [pendingTarget, t, toast])
+
+  useEffect(() => {
+    if (!device?.connected) countdownAbort.current?.abort()
+    return () => countdownAbort.current?.abort()
+  }, [device?.connected, machineType])
+
+  const waitForFtmsCountdown = useCallback(async (resume: boolean) => {
+    if (machineType !== 'treadmill' || device?.treadmillProtocol !== 'ftms') return true
+    const controller = new AbortController()
+    countdownAbort.current = controller
+    try {
+      for (let seconds = 3; seconds > 0; seconds--) {
+        if (controller.signal.aborted) return false
+        setLocalCountdown({ seconds, resume })
+        await new Promise<void>((resolve) => {
+          const timer = window.setTimeout(() => { controller.signal.removeEventListener('abort', abort); resolve() }, 1000)
+          function abort() { window.clearTimeout(timer); resolve() }
+          controller.signal.addEventListener('abort', abort, { once: true })
+        })
+      }
+      return !controller.signal.aborted
+    } finally {
+      countdownAbort.current = null
+      setLocalCountdown(null)
+    }
+  }, [device?.treadmillProtocol, machineType])
+  const metrics = machineType === 'treadmill'
+    ? pausedTreadmill?.metrics ?? (startBaselinePending
+      ? applyTreadmillCounterOffsets(liveMetrics, resumeTreadmillCounters({}, liveMetrics, {}))
+      : applyTreadmillCounterOffsets(liveMetrics, treadmillOffsets))
+    : liveMetrics
+  const liveHeartRate = hrDevice.metrics.heartRate || liveMetrics.heartRate || 0
+  const hr = machineType === 'treadmill' && pausedTreadmill ? pausedTreadmill.heartRate : liveHeartRate
 
   const elapsed = running || paused ? metrics.elapsedTime ?? 0 : 0
   const distance = running || paused ? metrics.distance ?? 0 : 0
@@ -129,33 +194,38 @@ export default function MachineTrain() {
   const power = metrics.power ?? 0
   const calories = metrics.calories ?? 0
 
-  // 间歇阶段由器械权威计时推导
-  const interval = useMemo(() => {
-    const cycle = intervalCfg.work + intervalCfg.rest
-    const idx = Math.floor(elapsed / cycle)
-    const pos = elapsed % cycle
-    const phase: 'work' | 'rest' = pos < intervalCfg.work ? 'work' : 'rest'
-    const remain = phase === 'work' ? intervalCfg.work - pos : cycle - pos
-    return {
-      phase,
-      remain,
-      round: Math.min(intervalCfg.rounds, idx + 1),
-      done: Math.floor(elapsed / cycle),
-      total: intervalCfg.rounds * cycle,
-    }
-  }, [elapsed, intervalCfg])
+  useEffect(() => {
+    if (!startBaselinePending || !device?.metrics.speed || device.metrics.privateTreadmillActive === false) return
+    setTreadmillOffsets(resumeTreadmillCounters({}, device.metrics, {}))
+    setStartBaselinePending(false)
+  }, [startBaselinePending, device])
 
-  // 目标进度
-  const targetValue =
-    mode === 'distance' ? distanceTarget : mode === 'time' ? timeTarget : mode === 'interval' ? interval.total : 0
-  const progressSource =
-    mode === 'distance' ? distance : mode === 'time' ? elapsed : mode === 'interval' ? elapsed : 0
-  const progress = targetValue > 0 ? Math.min(100, (progressSource / targetValue) * 100) : 0
-  const reached = targetValue > 0 && progressSource >= targetValue
+  useEffect(() => {
+    if (machineType !== 'treadmill' || paused || !pausedTreadmill || !resumeFrom || !device?.metrics) return
+    if (device.metrics === resumeFrom || device.metrics.privateTreadmillActive === false || !device.metrics.speed) return
+    setTreadmillOffsets((offsets) => resumeTreadmillCounters(pausedTreadmill.metrics, device.metrics, offsets))
+    setPausedTreadmill(null)
+    setResumeFrom(null)
+    const speed = pausedTreadmill.metrics.speed
+    const { incline, privateTreadmillActive } = device.metrics
+    if (!privateTreadmillActive || !speed || speed === device.metrics.speed || incline === undefined) return
+    controlPending.current = true
+    setAdjustingTreadmill(true)
+    void setTreadmillTargets(speed, incline).catch(() => {
+      toast(t('未能恢复暂停前的速度，请使用器械面板调节'))
+    }).finally(() => {
+      controlPending.current = false
+      setAdjustingTreadmill(false)
+    })
+  }, [device, machineType, paused, pausedTreadmill, resumeFrom, setTreadmillTargets, t, toast])
+
+  // 间歇阶段由器械权威计时推导
+  const interval = intervalProgress(elapsed, intervalCfg)
+  const { target: targetValue, progress, reached } = trainingGoal(mode, elapsed, distance, timeTarget, distanceTarget, interval.total)
 
   // 采样平均指标
   useEffect(() => {
-    if (!running || paused) return
+    if (!running || paused || pausedTreadmill) return
     const a = accRef.current
     if (speed > 0) {
       a.speed += speed
@@ -169,46 +239,98 @@ export default function MachineTrain() {
       a.power += power
       a.powerN += 1
     }
-  }, [speed, cadence, power, running, paused])
+  }, [speed, cadence, power, running, paused, pausedTreadmill])
 
   useEffect(() => {
-    if (!running || paused || hr <= 0) return
+    if (!running || paused || pausedTreadmill || hr <= 0) return
     accRef.current.hr += hr
     accRef.current.hrN += 1
-  }, [hr, running, paused])
+  }, [hr, running, paused, pausedTreadmill])
 
+  const adjustTreadmill = async (field: 'speed' | 'incline', value: number) => {
+    if (!running || paused || pausedTreadmill || pendingTarget || !connected || controlPending.current || finishingRef.current ||
+      !liveMetrics.speed) return
+    controlPending.current = true
+    setPendingTarget({ field, value })
+    try {
+      if (device?.treadmillProtocol === 'ftms') await setFtmsTreadmillTarget(field, value)
+      else if (liveMetrics.incline !== undefined) {
+        await setTreadmillTargets(field === 'speed' ? value : liveMetrics.speed, field === 'incline' ? value : liveMetrics.incline)
+      }
+    } catch {
+      setPendingTarget(null)
+      toast(t('跑步机控制失败，请使用器械面板'))
+    } finally {
+      controlPending.current = false
+    }
+  }
   const start = useCallback(async () => {
+    if (controlPending.current) return
+    controlPending.current = true
+    try {
+      if (!(await waitForFtmsCountdown(false))) return
+      await startDevice(machineType, true)
+    } catch {
+      toast(t('无法启动跑步机，请检查器械面板后重试'))
+      return
+    } finally {
+      controlPending.current = false
+    }
     workoutRef.current = { id: crypto.randomUUID(), startedAt: new Date().toISOString(), owner: getMachineSessionOwner() }
     resultRef.current = null
     accRef.current = { speed: 0, speedN: 0, cadence: 0, cadenceN: 0, power: 0, powerN: 0, hr: 0, hrN: 0 }
     autoRef.current = false
     phaseRef.current = 'work'
     setFinished(null)
+    setPausedTreadmill(null)
+    setResumeFrom(null)
+    setTreadmillOffsets({})
+    setStartBaselinePending(machineType === 'treadmill')
     setPaused(false)
     setRunning(true)
-    await startDevice(machineType, true)
-  }, [machineType, startDevice])
+  }, [machineType, startDevice, waitForFtmsCountdown, t, toast])
 
   const togglePause = useCallback(async () => {
-    if (paused) {
-      setPaused(false)
-      await startDevice(machineType, false)
-    } else {
-      setPaused(true)
-      await stopDevice(machineType)
+    if (controlPending.current || finishingRef.current) return
+    controlPending.current = true
+    try {
+      if (paused) {
+        if (!(await waitForFtmsCountdown(true))) return
+        await startDevice(machineType, false)
+        if (machineType === 'treadmill') setResumeFrom(liveMetrics)
+      } else {
+        if (machineType === 'treadmill') {
+          setResumeFrom(null)
+          setPausedTreadmill(pausedTreadmill ?? { metrics, heartRate: liveHeartRate })
+        }
+        await stopDevice(machineType, true)
+      }
+      setPaused(!paused)
+    } catch {
+      if (!paused) setPausedTreadmill(null)
+      toast(t('跑步机控制失败，请使用器械面板'))
+    } finally {
+      controlPending.current = false
     }
-  }, [paused, machineType, startDevice, stopDevice])
+  }, [paused, machineType, liveMetrics, liveHeartRate, metrics, pausedTreadmill, startDevice, stopDevice, waitForFtmsCountdown, t, toast])
 
   const finish = useCallback(
     async (auto = false) => {
-      if (finishingRef.current || !workoutRef.current) return
+      if (controlPending.current || finishingRef.current || !workoutRef.current) return
       finishingRef.current = true
       setSaving(true)
       const workout = workoutRef.current
       const a = accRef.current
       setRunning(false)
       setPaused(false)
-      void stopDevice(machineType)
+      setPausedTreadmill(null)
+      setResumeFrom(null)
+      setStartBaselinePending(false)
+      try {
+        await stopDevice(machineType)
+      } catch {
+        toast(t('未能确认跑步机停止，请使用器械面板停止'))
+      }
       const avg = (sum: number, n: number) => (n > 0 ? Math.round((sum / n) * 10) / 10 : 0)
       const record: MachineSession = resultRef.current ?? {
         id: workout.id,
@@ -257,21 +379,22 @@ export default function MachineTrain() {
 
   // 目标达成自动结束
   useEffect(() => {
-    if (!running || paused || !reached || autoRef.current) return
+    if (!running || paused || pausedTreadmill || startBaselinePending || countdown || adjustingTreadmill ||
+      !reached || controlPending.current || autoRef.current) return
     autoRef.current = true
     finish(true)
-  }, [reached, running, paused, finish])
+  }, [reached, running, paused, pausedTreadmill, startBaselinePending, countdown, adjustingTreadmill, finish])
 
   // 间歇阶段切换提示
   useEffect(() => {
-    if (!running || paused || mode !== 'interval') return
+    if (!running || paused || pausedTreadmill || countdown || startBaselinePending || reached || mode !== 'interval') return
     if (phaseRef.current !== interval.phase) {
       phaseRef.current = interval.phase
       const prefs = getPrefs()
       if (prefs.sound) beep(interval.phase === 'work' ? 880 : 520, 160)
       if (prefs.vibration) vibrate(interval.phase === 'work' ? 120 : 60)
     }
-  }, [interval.phase, running, paused, mode])
+  }, [interval.phase, running, paused, pausedTreadmill, countdown, startBaselinePending, reached, mode])
 
   if (!machine || !device) {
     return (
@@ -309,6 +432,8 @@ export default function MachineTrain() {
       { label: t('平均心率'), value: finished.avgHr ? `${finished.avgHr} bpm` : '—' },
       { label: t('平均速度'), value: finished.avgSpeed ? `${finished.avgSpeed} km/h` : '—' },
       { label: t('平均{{label}}', { label: t(CADENCE_LABEL[machineType]) }), value: finished.cadence ? `${finished.cadence}` : '—' },
+      ...(machineType === 'treadmill' ? [{ label: t('平均配速'), value: finished.distanceM > 0 && finished.durationSec > 0
+        ? `${formatTreadmillPace(finished.durationSec * 1000 / finished.distanceM)} /km` : '—' }] : []),
     ]
 
     return (
@@ -410,12 +535,23 @@ export default function MachineTrain() {
 
   return (
     <div className={`px-5 pt-4 hd:lg:px-8 hd:lg:pt-6 ${connected ? 'pb-[calc(env(safe-area-inset-bottom)+84px)] hd:lg:pb-8' : ''}`}>
+      {countdown && createPortal(
+        <div className={`fixed inset-0 z-[80] grid place-items-center bg-text/90 text-white ${localCountdown ? '' : 'pointer-events-none'}`}>
+          <div className="flex flex-col items-center gap-5 text-center" role="status" aria-live="assertive">
+            <p className="text-lg font-semibold">{t(localCountdown?.resume || resumeFrom ? '即将恢复训练' : '准备开始')}</p>
+            <p className="font-mono text-[clamp(8rem,38vmin,20rem)] font-bold leading-none text-primary tabular-nums">{countdown}</p>
+            {localCountdown && <button type="button" onClick={() => countdownAbort.current?.abort()}
+              className="rounded-full border border-white/50 px-6 py-2 text-sm font-semibold">{t('取消')}</button>}
+          </div>
+        </div>, document.body,
+      )}
       {/* 顶栏 */}
       <header className="mb-4 flex items-center gap-3">
         <button
           onClick={() => {
-            if (running || paused) stopDevice(machineType)
-            navigate('/machines')
+            if (controlPending.current || finishingRef.current) return
+            if (running || paused) setConfirmOpen(true)
+            else navigate('/machines')
           }}
           className="flex h-10 w-10 items-center justify-center rounded-full bg-surface-2 text-text-sub"
           aria-label={t('返回')}
@@ -429,18 +565,31 @@ export default function MachineTrain() {
             {statusText}
           </p>
         </div>
-        {connected ? (
+        {connected && !running && !paused && !countdown && !saving && (
           <button
             onClick={() => {
-              if (running) return
-              disconnectDevice(machineType)
+              if (!controlPending.current && !finishingRef.current) disconnectDevice(machineType)
             }}
             className="rounded-full border border-border bg-surface px-3 py-1.5 text-[15px] text-text-sub"
           >
             {t('断开')}
           </button>
-        ) : null}
+        )}
       </header>
+
+      {connected && (running || paused) && (
+        <div className="sticky top-0 z-30 mb-3 flex flex-wrap items-center justify-between gap-x-3 gap-y-1 rounded-md border border-border bg-surface px-3 py-2 text-sm shadow-card">
+          <span className={`font-semibold ${paused ? 'text-text-sub' : 'text-connected'}`}>
+            {paused ? t('已暂停') : pausedTreadmill ? t('即将恢复训练') : t('训练中')}
+          </span>
+          <span className="text-text-sub">
+            {mode === 'interval' ? `${t('第 {{current}}/{{total}} 组', { current: interval.round, total: intervalCfg.rounds })} · ${t(interval.phase === 'work' ? '训练阶段' : '休息阶段')} · ${formatTime(interval.remain)}`
+              : mode === 'distance' ? t('还剩 {{distance}} 公里', { distance: Math.max(0, (distanceTarget - distance) / 1000).toFixed(2) })
+                : mode === 'time' ? `${t('剩余时间')} ${formatTime(Math.max(0, timeTarget - elapsed))}`
+                  : t('已用时 {{time}}', { time: formatTime(elapsed) })}
+          </span>
+        </div>
+      )}
 
       {/* 未连接引导 */}
       {!connected && (
@@ -487,7 +636,7 @@ export default function MachineTrain() {
                         paused ? 'bg-surface-2 text-text-sub' : 'bg-connected/10 text-connected'
                       }`}
                     >
-                      {paused ? t('已暂停') : t('训练中')}
+                      {paused ? t('已暂停') : countdown ? t('准备开始') : t('训练中')}
                     </span>
                   </div>
 
@@ -565,7 +714,7 @@ export default function MachineTrain() {
                       unit: SPEED_MACHINES.includes(machineType) ? 'km/h' : 'W',
                       color: '',
                     },
-                    {
+                    ...(machineType !== 'treadmill' ? [{
                       label: '消耗',
                       value: `${Math.round(calories)}`,
                       unit: 'kcal',
@@ -576,18 +725,22 @@ export default function MachineTrain() {
                       value: cadence ? `${Math.round(cadence)}` : '—',
                       unit: RPM_MACHINES.includes(machineType) ? 'rpm' : 'spm',
                       color: '',
-                    },
+                    }] : []),
                     {
                       label: '距离',
                       value: `${(distance / 1000).toFixed(2)}`,
                       unit: 'km',
                       color: '',
                     },
-                  ].map((it, i) => (
+                    ...(machineType === 'treadmill' ? [
+                      { label: '配速', value: formatTreadmillPace(3600 / speed), unit: 'min/km', color: '' },
+                      { label: '坡度', value: metrics.incline?.toString() ?? '—', unit: '%', color: '' },
+                    ] : []),
+                  ].map((it, i, items) => (
                     <div
                       key={it.label}
                       className={`px-4 py-3.5 ${i % 2 === 0 ? 'border-r border-border' : ''} ${
-                        i < 2 ? 'border-b border-border' : ''
+                        i < items.length - 2 ? 'border-b border-border' : ''
                       }`}
                     >
                       <p className="text-[15px] text-text-sub">{t(it.label)}</p>
@@ -600,6 +753,66 @@ export default function MachineTrain() {
                     </div>
                   ))}
                 </div>
+
+                {treadmillLimits && (
+                  <section className="space-y-3 rounded-lg border border-border bg-surface p-4">
+                    <h2 className="font-display text-base font-bold">{t('跑步机控制')}</h2>
+                    {(['speed', 'incline'] as const).map((field) => {
+                      const range = treadmillLimits[field]
+                      const current = liveMetrics[field]
+                      const isSpeed = field === 'speed'
+                      const label = t(isSpeed ? '速度' : '坡度')
+                      const step = range?.step ?? (isSpeed ? 0.1 : 1)
+                      const privatePairUnavailable = device?.treadmillProtocol === 'private' &&
+                        (!treadmillLimits.speed || !treadmillLimits.incline || liveMetrics.incline === undefined)
+                      const disabled = privatePairUnavailable || !range || current === undefined || !liveMetrics.speed ||
+                        paused || Boolean(pausedTreadmill) || adjustingTreadmill || Boolean(pendingTarget) || Boolean(countdown)
+                      return (
+                        <div key={field} className="rounded-md bg-surface-2 px-3 py-2">
+                          <div className="mb-2 flex flex-wrap items-baseline justify-between gap-x-2">
+                            <p className="text-sm font-semibold">{label}</p>
+                            <p className="text-xs text-text-sub">{range ? `${range.min}–${range.max} ${isSpeed ? 'km/h' : '%'}`
+                              : t(device?.treadmillProtocol === 'ftms' ? '器械未提供调节范围' : '等待读取器械范围')}</p>
+                          </div>
+                          <div className="grid grid-cols-[auto_1fr_auto] items-center gap-2">
+                            {[-1, 0, 1].map((direction) => {
+                              if (direction === 0) return <div key={direction} className="min-w-0 text-center">
+                                <p className="font-mono text-lg font-bold tabular-nums">{metrics[field] ?? '—'} <span className="text-xs font-normal text-text-sub">{isSpeed ? 'km/h' : '%'}</span></p>
+                                {pendingTarget?.field === field && <p role="status" className="text-xs text-text-sub">{t('调节中')} · {pendingTarget.value}</p>}
+                              </div>
+                              const min = range?.min ?? 0
+                              const index = Math.round(((current ?? min) - min) / step) + direction
+                              const target = Math.round((min + index * step) * 100) / 100
+                              return <button key={direction} type="button"
+                                aria-label={`${direction < 0 ? t('降低') : t('提高')}${label}`}
+                                disabled={disabled || !range || target < range.min || target > range.max}
+                                onClick={() => void adjustTreadmill(field, target)}
+                                className="grid size-11 place-items-center rounded-md bg-text text-xl font-bold text-bg disabled:opacity-30">
+                                {direction < 0 ? '−' : '+'}
+                              </button>
+                            })}
+                          </div>
+                        </div>
+                      )
+                    })}
+                  </section>
+                )}
+
+                {machineType === 'treadmill' && (
+                  <details className="rounded-lg border border-border bg-surface p-4">
+                    <summary className="cursor-pointer font-semibold">{t('数据详情')}</summary>
+                    <dl className="mt-3 grid grid-cols-2 gap-4 text-sm">
+                      {[
+                        ['消耗', `${Math.round(calories)} kcal`],
+                        ['步频', cadence ? `${Math.round(cadence)} spm` : '—'],
+                        ['器械步数', metrics.strokeCount ? String(metrics.strokeCount) : t('未收到有效步数')],
+                        ['心率', hr ? `${hr} bpm` : '—'],
+                      ].map(([label, value]) => (
+                        <div key={label}><dt className="text-text-sub">{t(label)}</dt><dd className="mt-1 font-semibold">{value}</dd></div>
+                      ))}
+                    </dl>
+                  </details>
+                )}
 
                 </div>
 
@@ -646,16 +859,20 @@ export default function MachineTrain() {
                 </div>
               </div>
 
-              {paused && (
-                <div className="pointer-events-none absolute inset-x-0 top-16 z-10 flex justify-center">
-                  <div className="w-[86%] rounded-lg border border-border bg-surface/95 p-5 text-center shadow-card backdrop-blur">
-                    <div className="mx-auto flex h-11 w-11 items-center justify-center rounded-full bg-surface-2">
-                      <Pause size={18} />
-                    </div>
-                    <p className="mt-2 font-display text-[19px] font-bold">{t('已暂停')}</p>
-                    <p className="mt-1 text-[15px] text-text-sub">{t('计时与器械数据已停止，继续后从当前位置恢复')}</p>
+              {paused && !countdown && createPortal(
+                <div className="pointer-events-none fixed inset-0 z-40" role="status" aria-live="polite">
+                  <div className="absolute left-1/2 top-1/2 w-[calc(100%-2.5rem)] max-w-xs -translate-x-1/2 -translate-y-1/2 rounded-lg border border-border bg-surface/95 p-5 text-center shadow-lg backdrop-blur">
+                        <div className="mx-auto flex h-11 w-11 items-center justify-center rounded-full bg-surface-2">
+                          <Pause size={18} />
+                        </div>
+                        <p className="mt-2 font-display text-[19px] font-bold">{t('已暂停')}</p>
+                        <p className="mt-1 text-[15px] text-text-sub">{t('计时与器械数据已停止，继续后从当前位置恢复')}</p>
+                        {pausedTreadmill?.metrics.speed ? <p className="mt-2 text-sm font-semibold">
+                          {t(device.treadmillProtocol === 'private' && treadmillLimits?.speed && treadmillLimits?.incline
+                            ? '继续后将恢复至 {{speed}} km/h' : '暂停前速度 {{speed}} km/h', { speed: pausedTreadmill.metrics.speed })}
+                        </p> : null}
                   </div>
-                </div>
+                </div>, document.body,
               )}
             </div>
           )}
