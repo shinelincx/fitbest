@@ -50,13 +50,21 @@ const MACHINE_ICON = {
 }
 
 export default function Machines() {
-  const { t } = useTranslation()
+  const { t, i18n } = useTranslation()
   const [sessions, setSessions] = useState<MachineSession[]>([])
   const [loading, setLoading] = useState(true)
   const [nfcReading, setNfcReading] = useState(false)
   const [pendingType, setPendingType] = useState<DeviceType | null>(null)
   const [pendingName, setPendingName] = useState('')
-  const { devices, connectDevice } = useDevices()
+  const { devices, connectDevice, machineNavigation } = useDevices()
+  const navigationItems = machineNavigation
+    ? machineNavigation.machineTypes.flatMap(({ code, names }) => {
+      const machine = MACHINES.find((item) => item.type === code)
+      if (!machine) return []
+      const language = i18n.resolvedLanguage ?? i18n.language
+      return [{ ...machine, name: names[language] || names[language.split('-')[0]] || names['zh-CN'] || machine.name }]
+    })
+    : MACHINES
   const navigate = useNavigate()
   const toast = useToast()
 
@@ -135,7 +143,7 @@ export default function Machines() {
         </div>
       ) : (
         <div className="reveal reveal-2 mt-4 overflow-hidden rounded-md border border-border bg-surface hd:lg:grid hd:lg:grid-cols-2 hd:lg:gap-3 hd:lg:overflow-visible hd:lg:rounded-none hd:lg:border-0 hd:lg:bg-transparent">
-          {MACHINES.map((m, i) => {
+          {navigationItems.map((m, i) => {
             const Icon = MACHINE_ICON[m.type]
             const list = week.filter((s) => s.machine === m.type)
             const distance = list.reduce((a, s) => a + s.distanceM, 0)

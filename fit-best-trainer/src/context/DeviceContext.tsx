@@ -10,7 +10,8 @@ import {
 import i18n from '../i18n'
 import { Capacitor } from '@capacitor/core'
 import BluetoothSearchDialog, { type BluetoothSearchRequest } from '../components/BluetoothSearchDialog'
-import { identifyDevice, isKnownFtmsSki } from '../ble/identify'
+import { identifyDevice } from '../ble/identify'
+import { fetchMachineNavigation, matchBleRule, readMachineNavigation, type MachineNavigation } from '../api/machineNavigation'
 import {
   parsePrivateTreadmillCountdown, parsePrivateTreadmillData, parsePrivateTreadmillLimits, privateTreadmillControl, privateTreadmillSetTargets,
   selectPrivateTreadmillCharacteristics, TREADMILL_INCLINE_RANGE_REQUEST, TREADMILL_SPEED_RANGE_REQUEST,
@@ -89,6 +90,7 @@ export interface ConsoleState {
 }
 
 interface DeviceContextValue {
+  machineNavigation: MachineNavigation | null
   devices: Record<DeviceType, DeviceState>
   supported: boolean
   /** 打开系统蓝牙选择器并连接该类型设备 */
@@ -166,6 +168,20 @@ function initialDevices(): Record<DeviceType, DeviceState> {
 }
 
 export function DeviceProvider({ children }: { children: ReactNode }) {
+  const [machineNavigation, setMachineNavigation] = useState(readMachineNavigation)
+  const navigationRef = useRef(machineNavigation)
+  const refreshNavigation = useCallback(async () => {
+    try {
+      const config = await fetchMachineNavigation()
+      navigationRef.current = config
+      setMachineNavigation(config)
+      return config
+    } catch (error) {
+      console.warn('器械导航配置读取失败：', error)
+      return navigationRef.current
+    }
+  }, [])
+  useEffect(() => { void refreshNavigation() }, [refreshNavigation])
   const [devices, setDevices] = useState<Record<DeviceType, DeviceState>>(initialDevices)
   const gattRefs = useRef<Record<string, GattRef>>({})
   const treadmillSteps = useRef<{ time: number; count: number } | null>(null)
@@ -364,6 +380,7 @@ export function DeviceProvider({ children }: { children: ReactNode }) {
   // Web Bluetooth 需要用户手势；原生端用应用内列表展示扫描结果。
   const pickDevice = useCallback(
     async (type: DeviceType | 'all', namePrefix?: string, acceptAll = false): Promise<BleDeviceRef | null> => {
+      void refreshNavigation()
       if (!supported) {
         if (type !== 'all') setStatus(type, 'failed')
         return null
@@ -377,7 +394,7 @@ export function DeviceProvider({ children }: { children: ReactNode }) {
               const name = device.name ?? ''
               const advertised = services.map(normalizeUuid)
               if (type === 'heartRate') return advertised.includes(normalizeUuid(HEART_RATE_SERVICE))
-              const kind = identifyDevice(name)
+              const kind = matchBleRule(navigationRef.current, name)?.machineType ?? identifyDevice(name)
               if (type === 'all') return kind !== null && kind !== 'pin'
               return kind === type || Boolean(namePrefix && name.startsWith(namePrefix)) ||
                 (!kind && ((type === 'treadmill' && Boolean(name)) ||
@@ -413,7 +430,7 @@ export function DeviceProvider({ children }: { children: ReactNode }) {
         namePrefix,
       })
     },
-    [supported, setStatus],
+    [supported, setStatus, refreshNavigation],
   )
 
   // 绑定已选中的设备：订阅真实通知、建立连接引用
@@ -498,8 +515,18 @@ export function DeviceProvider({ children }: { children: ReactNode }) {
           // 非 ThinkFit 车表，继续走标准 FTMS
         }
 
-        // #9 接入服务端配置后移除此样机规则。
-        const usePrivateOnly = type === 'treadmill' && device.name?.trim().toUpperCase() === 'YJ01-S7PRO-000007'
+        const config = navigationRef.current ?? await refreshNavigation()
+        const preference = matchBleRule(config, device.name ?? '', type)?.preferredProtocol
+        const usePrivateFirst = type === 'treadmill' && preference === 'PRIVATE'
+        if (usePrivateFirst && consoleClient) {
+          readsPrivateTelemetry = true
+          try {
+            await consoleClient.send(TREADMILL_TELEMETRY_REQUEST)
+          } catch (error) {
+            readsPrivateTelemetry = false
+            console.warn('首选私有通道不可用，尝试 FTMS：', error)
+          }
+        }
         // 2) 标准 FTMS 实时数据
         let controlPoint: BleCharacteristic | undefined
         try {
@@ -516,7 +543,7 @@ export function DeviceProvider({ children }: { children: ReactNode }) {
             rep: ROWER_DATA,
             heartRate: ROWER_DATA, // 不会走到这里
           }
-          if (!usePrivateOnly) {
+          if (!readsPrivateTelemetry && connection.hasService(FTMS_SERVICE)) {
             const dataChar = await connection.getCharacteristic(FTMS_SERVICE, charMap[type])
             unsubscribeData = await dataChar.startNotifications((bytes) => {
               const parsed = type === 'treadmill'
@@ -537,13 +564,16 @@ export function DeviceProvider({ children }: { children: ReactNode }) {
         }
         if (!unsubscribeData) {
           // 无 FTMS：ThinkFit 车表仅提供配置能力时也能保持连接
-          if (!consoleClient || (type === 'ski' && isKnownFtmsSki(device.name ?? ''))) {
+          if (!consoleClient || type === 'ski') {
             throw new Error('未找到可用的器械服务')
           }
           if (type === 'treadmill') {
-            readsPrivateTelemetry = true
             const client = consoleClient
-            await client.send(TREADMILL_TELEMETRY_REQUEST)
+            if (!readsPrivateTelemetry) {
+              if (usePrivateFirst) throw new Error('未找到可用的跑步机数据通道')
+              readsPrivateTelemetry = true
+              await client.send(TREADMILL_TELEMETRY_REQUEST)
+            }
             let pending = false
             let tick = 0
             const timer = window.setInterval(() => {
@@ -600,7 +630,7 @@ export function DeviceProvider({ children }: { children: ReactNode }) {
         throw err
       }
     },
-    [updateMetrics, setStatus, disconnectDevice, refreshConsoleInfo],
+    [updateMetrics, setStatus, disconnectDevice, refreshConsoleInfo, refreshNavigation],
   )
 
   // 连接设备：弹出系统选择器 → 绑定所选设备
@@ -650,7 +680,8 @@ export function DeviceProvider({ children }: { children: ReactNode }) {
       return null
     }
     const name = device.name || ''
-    const kind = identifyDevice(name)
+    const config = navigationRef.current ?? await refreshNavigation()
+    const kind = matchBleRule(config, name)?.machineType ?? identifyDevice(name)
     if (!kind || kind === 'pin') {
       setAllError(i18n.t('无法识别的设备，请到智能器械页选择类型后连接'))
       setAllScanning(false)
@@ -668,7 +699,7 @@ export function DeviceProvider({ children }: { children: ReactNode }) {
     } finally {
       setAllScanning(false)
     }
-  }, [pickDevice, attachDevice, supported])
+  }, [pickDevice, attachDevice, supported, refreshNavigation])
 
   // 启动器械（reset=true 归零后启动；reset=false 暂停恢复）。心率带无需启停，连接后持续推送
   const startDevice = useCallback(
@@ -776,6 +807,7 @@ export function DeviceProvider({ children }: { children: ReactNode }) {
     <DeviceContext.Provider
       value={{
         devices,
+        machineNavigation,
         supported,
         scanDevices,
         allFound,

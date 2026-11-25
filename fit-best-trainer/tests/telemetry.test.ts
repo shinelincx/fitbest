@@ -10,8 +10,21 @@ import { parsePrivateTreadmillCountdown, parsePrivateTreadmillData, parsePrivate
 import { parseFtmsTreadmillRange, sendFtmsControl } from '../src/ble/ftmsControl'
 import { applyTreadmillCounterOffsets, formatTreadmillPace, resumeTreadmillCounters } from '../src/ble/treadmillCounters'
 import { intervalProgress, trainingGoal } from '../src/utils/trainingGoals'
+import { matchBleRule, type MachineNavigation } from '../src/api/machineNavigation'
 
 const packet = (...bytes: number[]) => new Uint8Array(bytes)
+
+it('按优先级匹配服务端规则并保留手动选择的机型', () => {
+  const config: MachineNavigation = { machineTypes: [], resistanceDisabledPatterns: [], bleRules: [
+    { machineType: 'ski', match: 'contains', patterns: ['S7'], preferredProtocol: 'FTMS', priority: 20 },
+    { machineType: 'treadmill', match: 'exact', patterns: ['YJ01-S7Pro-000007'], preferredProtocol: 'PRIVATE', priority: 10 },
+    { machineType: 'ski', match: 'prefix', patterns: ['kpower-'], preferredProtocol: 'FTMS', priority: 30 },
+  ] }
+  expect(matchBleRule(config, ' yj01-s7pro-000007 ')?.preferredProtocol).toBe('PRIVATE')
+  expect(matchBleRule(config, 'YJ01-S7Pro-000007', 'ski')?.machineType).toBe('ski')
+  expect(matchBleRule(config, 'Kpower-00028')?.preferredProtocol).toBe('FTMS')
+  expect(matchBleRule(config, 'unknown')).toBeUndefined()
+})
 
 it('用本次运动累计值推进距离、时间和间歇目标', () => {
   const config = { work: 30, rest: 10, rounds: 2 }

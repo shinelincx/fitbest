@@ -22,14 +22,8 @@ const TYPE_CODES: Record<string, IdentifiedKind> = {
   PN: 'pin',
 }
 
-/** NewAiFitbest 真机验证过的 FTMS 滑雪机广播名。 */
-export function isKnownFtmsSki(name: string): boolean {
-  return name.trim().toLowerCase() === 'kpower-00028'
-}
-
 /** 从广播名识别器械类别；未命中自有协议时按常见名兜底 */
 export function identifyDevice(name: string): IdentifiedKind | null {
-  if (isKnownFtmsSki(name)) return 'ski'
   const m = /^FB-([A-Z]{2})-/i.exec(name.trim())
   if (m) {
     const kind = TYPE_CODES[m[1].toUpperCase()]
