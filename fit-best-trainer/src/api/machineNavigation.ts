@@ -20,6 +20,14 @@ const nativeBase = 'https://cloud.thinkfiter.com/fit-best/api/v1'
 const normalize = (value: string) => value.trim().toLowerCase()
 const supportedTypes = new Set<string>(['treadmill', 'rower', 'ski', 'bike', 'spin', 'elliptical', 'upright', 'stair'])
 
+export function isResistanceDisabled(config: MachineNavigation | null, name: string): boolean {
+  const deviceName = normalize(name)
+  return config?.resistanceDisabledPatterns.some((pattern) => {
+    const value = normalize(pattern)
+    return value.length > 0 && deviceName.includes(value)
+  }) ?? false
+}
+
 export function matchBleRule(config: MachineNavigation | null, name: string, type?: string): BleRule | undefined {
   const deviceName = normalize(name)
   return config?.bleRules.slice().sort((a, b) => a.priority - b.priority).find((rule) =>
@@ -35,6 +43,7 @@ export function matchBleRule(config: MachineNavigation | null, name: string, typ
 
 function validate(data: MachineNavigation): MachineNavigation {
   if (!Array.isArray(data?.machineTypes) || !Array.isArray(data.bleRules) || !Array.isArray(data.resistanceDisabledPatterns) ||
+    !data.resistanceDisabledPatterns.every((value) => typeof value === 'string') ||
     !data.machineTypes.every((item) => item?.names && typeof item.names === 'object' &&
       Object.values(item.names).every((name) => typeof name === 'string')) ||
     !data.bleRules.every((rule) => Number.isFinite(rule?.priority) && Array.isArray(rule.patterns) &&

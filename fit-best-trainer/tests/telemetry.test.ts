@@ -1,6 +1,8 @@
 import { describe, expect, it } from 'vitest'
 import {
   parseHeartRateData,
+  parseClimberData,
+  parseCrossTrainerData,
   parseIndoorBikeData,
   parseRowerData,
   parseTreadmillData,
@@ -11,6 +13,7 @@ import { parseFtmsTreadmillRange, sendFtmsControl } from '../src/ble/ftmsControl
 import { applyTreadmillCounterOffsets, formatTreadmillPace, resumeTreadmillCounters } from '../src/ble/treadmillCounters'
 import { intervalProgress, trainingGoal } from '../src/utils/trainingGoals'
 import { matchBleRule, type MachineNavigation } from '../src/api/machineNavigation'
+import { parsePrivateCardioPacket, privateCardioControl, privateCardioResistance } from '../src/ble/privateCardio'
 
 const packet = (...bytes: number[]) => new Uint8Array(bytes)
 
@@ -163,20 +166,41 @@ describe('FTMS 与心率协议', () => {
 
   it('保持动感单车字段顺序并解析功率', () => {
     const data = packet(
-      0x14, 0x94,
+      0x74, 0x0b,
+      0xd0, 0x07,
       0x64, 0x00,
       0x59, 0x01, 0x00,
+      8,
       0xc8, 0x00,
-      0x58, 0x00,
+      0x58, 0x00, 0, 0, 0,
+      123,
       0x2a, 0x00,
     )
     expect(parseIndoorBikeData(data)).toEqual({
-      cadence: 50,
+      speed: 20, cadence: 50, resistance: 8, heartRate: 123,
       distance: 345,
       power: 200,
       calories: 88,
       elapsedTime: 42,
     })
+  })
+
+  it('分别解析椭圆机、楼梯机和踏步机的独立特征', () => {
+    expect(parseCrossTrainerData(packet(0x0c, 0x21, 0, 0xe8, 3, 100, 0, 0, 60, 0, 50, 0, 120, 0, 20, 0)))
+      .toEqual({ speed: 10, distance: 100, cadence: 60, power: 120, elapsedTime: 20 })
+    expect(parseClimberData(packet(0x1a, 1, 5, 0, 60, 0, 12, 0, 30, 0, 20, 0)))
+      .toEqual({ floors: 5, cadence: 60, elevationGain: 12, strideCount: 30, elapsedTime: 20 })
+    expect(parseClimberData(packet(0x02, 0, 5, 0, 80, 0, 60, 0), true))
+      .toEqual({ floors: 5, strokeCount: 80, cadence: 60 })
+  })
+
+  it('解码旧版 ThinkFit 有氧数据并编码启停与阻力指令', () => {
+    expect(parsePrivateCardioPacket(packet(2, 0x42, 2, 0xd0, 7, 4, 52, 0, 120, 0xb0, 4, 0, 3)))
+      .toEqual({ metrics: { speed: 20, resistance: 4, cadence: 52, heartRate: 120, power: 120 } })
+    expect(parsePrivateCardioPacket(packet(2, 0x43, 1, 60, 0, 20, 0x80, 100, 0, 32, 0, 0, 3)))
+      .toEqual({ metrics: { elapsedTime: 60, distance: 200, calories: 10, strokeCount: 32 } })
+    expect(privateCardioControl('pause')).toEqual(packet(2, 0x44, 3, 0x47, 3))
+    expect(privateCardioResistance(8)).toEqual(packet(2, 0x44, 5, 8, 0, 0x49, 3))
   })
 
   it('解析 8 位和 16 位心率', () => {

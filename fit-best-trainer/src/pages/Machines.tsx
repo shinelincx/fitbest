@@ -1,7 +1,7 @@
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { Link, useNavigate } from 'react-router-dom'
-import { Bluetooth, Heart, Loader2 } from 'lucide-react'
+import { Bluetooth, Heart } from 'lucide-react'
 import { AirBikeIcon, EllipticalIcon, RowerIcon, SkiIcon, SpinIcon, StairIcon, TreadmillIcon, UprightIcon } from '../components/MachineIcons'
 import { fetchSessions } from '../api'
 import type { MachineSession } from '../types'
@@ -54,8 +54,7 @@ export default function Machines() {
   const [sessions, setSessions] = useState<MachineSession[]>([])
   const [loading, setLoading] = useState(true)
   const [nfcReading, setNfcReading] = useState(false)
-  const [pendingType, setPendingType] = useState<DeviceType | null>(null)
-  const [pendingName, setPendingName] = useState('')
+  const nfcAttempt = useRef<AbortController | null>(null)
   const { devices, connectDevice, machineNavigation } = useDevices()
   const navigationItems = machineNavigation
     ? machineNavigation.machineTypes.flatMap(({ code, names }) => {
@@ -68,42 +67,39 @@ export default function Machines() {
   const navigate = useNavigate()
   const toast = useToast()
 
-  // NFC 一碰即连：识别成功后连接并跳转训练页
-  useEffect(() => {
-    if (!pendingType) return
-    const d = devices[pendingType]
-    if (d.connected) {
-      setPendingType(null)
-      setPendingName('')
-      navigate(`/train/${pendingType}`)
-    } else if (d.status === 'failed') {
-      toast(t('连接失败，请重试'))
-      setPendingType(null)
-      setPendingName('')
-    }
-  }, [devices, pendingType, navigate, t, toast])
+  useEffect(() => () => nfcAttempt.current?.abort(), [])
 
   const handleNfc = useCallback(async () => {
-    if (nfcReading || pendingType) return
+    if (nfcAttempt.current) return
+    const attempt = new AbortController()
+    nfcAttempt.current = attempt
+    const timeout = window.setTimeout(() => {
+      attempt.abort()
+      toast(t('读取 NFC 标签超时，请重试'))
+    }, 15_000)
     setNfcReading(true)
     try {
-      const text = await readTextOnce()
+      const text = await readTextOnce(attempt.signal)
+      window.clearTimeout(timeout)
+      if (attempt.signal.aborted) return
       const hit = detectNfcMachine(text)
       if (!hit) {
         toast(t('无法识别的器械标签'))
         return
       }
-      setPendingType(hit.type)
-      setPendingName(hit.name)
-      connectDevice(hit.type, undefined, hit.name)
+      setNfcReading(false)
+      const connected = devices[hit.type].connected || await connectDevice(hit.type)
+      if (!attempt.signal.aborted && connected) navigate(`/train/${hit.type}`)
     } catch (error) {
       if (isCancellation(error)) return
       console.warn('NFC 读取失败：', error)
       toast(error instanceof Error ? error.message : t('NFC 读取失败，请重试'))
     } finally {
+      window.clearTimeout(timeout)
+      nfcAttempt.current = null
       setNfcReading(false)
     }
-  }, [connectDevice, nfcReading, pendingType, t, toast])
+  }, [connectDevice, devices, navigate, t, toast])
 
   useEffect(() => {
     fetchSessions().then((s) => {
@@ -196,23 +192,9 @@ export default function Machines() {
             </div>
             <p className="mt-4 text-[15px] font-semibold">{t('正在识别 NFC 标签')}</p>
             <p className="mt-1 text-[12px] text-text-sub">{t('请将手机靠近器械…')}</p>
-          </div>
-        </div>
-      )}
-
-      {/* 连接中浮层 */}
-      {pendingType && (
-        <div className="fixed inset-0 z-[75] flex items-center justify-center bg-black/55">
-          <div className="flex w-64 flex-col items-center rounded-2xl bg-bg px-6 py-8">
-            <div className="relative flex h-14 w-14 items-center justify-center">
-              <Loader2 size={40} className="animate-spin text-primary" />
-              <Bluetooth size={20} className="absolute text-primary" />
-            </div>
-            <p className="mt-4 text-[15px] font-semibold">{t('正在连接')}</p>
-            <p className="mt-1 font-mono text-[16px] font-bold tracking-wide text-text">
-              {pendingName || t('设备')}
-            </p>
-            <p className="mt-1 text-[12px] text-text-sub">{t('蓝牙连接中，请稍候…')}</p>
+            <button type="button" className="mt-5 rounded-md border border-border px-5 py-2 text-sm" onClick={() => nfcAttempt.current?.abort()}>
+              {t('取消')}
+            </button>
           </div>
         </div>
       )}

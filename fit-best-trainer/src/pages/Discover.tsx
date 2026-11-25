@@ -11,7 +11,7 @@ export default function Discover() {
 
   const startScan = async (acceptAll = false) => {
     const type = await scanAllDevices(acceptAll)
-    if (type) navigate(`/train/${type}`)
+    if (type) navigate(`/train/${type}`, { state: { fromDeviceSearch: true } })
   }
 
   return (

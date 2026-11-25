@@ -11,11 +11,12 @@ import i18n from '../i18n'
 import { Capacitor } from '@capacitor/core'
 import BluetoothSearchDialog, { type BluetoothSearchRequest } from '../components/BluetoothSearchDialog'
 import { identifyDevice } from '../ble/identify'
-import { fetchMachineNavigation, matchBleRule, readMachineNavigation, type MachineNavigation } from '../api/machineNavigation'
+import { fetchMachineNavigation, isResistanceDisabled, matchBleRule, readMachineNavigation, type MachineNavigation } from '../api/machineNavigation'
+import { CARDIO_DATA_REQUEST, CARDIO_LIMIT_REQUEST, CARDIO_STATUS_REQUEST, parsePrivateCardioPacket, privateCardioControl, privateCardioResistance } from '../ble/privateCardio'
 import {
   parsePrivateTreadmillCountdown, parsePrivateTreadmillData, parsePrivateTreadmillLimits, privateTreadmillControl, privateTreadmillSetTargets,
   selectPrivateTreadmillCharacteristics, TREADMILL_INCLINE_RANGE_REQUEST, TREADMILL_SPEED_RANGE_REQUEST,
-  TREADMILL_TELEMETRY_REQUEST, type TreadmillLimits,
+  TREADMILL_TELEMETRY_REQUEST, type TreadmillLimits, type TreadmillRange,
 } from '../ble/privateTreadmill'
 import { parseFtmsTreadmillRange, sendFtmsControl } from '../ble/ftmsControl'
 import { bleAdapter, type BleCharacteristic, type BleConnection, type BleDeviceRef } from '../platform/ble'
@@ -23,6 +24,8 @@ import { normalizeUuid } from '../platform/ble/uuid'
 import { NATIVE_FOREGROUND_EVENT } from '../platform/runtime'
 import {
   parseHeartRateData,
+  parseClimberData,
+  parseCrossTrainerData,
   parseIndoorBikeData,
   parseRowerData,
   parseTreadmillData,
@@ -62,6 +65,7 @@ export interface DeviceState {
   metrics: DeviceMetrics
   treadmillLimits?: TreadmillLimits
   treadmillProtocol?: 'private' | 'ftms'
+  resistanceRange?: TreadmillRange
   running: boolean // 器械是否已启动（开始训练）
 }
 
@@ -76,6 +80,8 @@ interface GattRef {
   unsubscribeData?: () => void
   console?: ThinkFitConsole
   privateTreadmill?: ThinkFitConsole
+  privateCardio?: ThinkFitConsole
+  resistanceRange?: TreadmillRange
   treadmillLimits?: TreadmillLimits
 }
 
@@ -100,12 +106,13 @@ interface DeviceContextValue {
   allScanning: boolean
   allError: string | null
   scanAllDevices: (acceptAll?: boolean) => Promise<DeviceType | null>
-  connectDevice: (type: DeviceType, deviceId?: string, namePrefix?: string) => Promise<void>
+  connectDevice: (type: DeviceType, deviceId?: string, namePrefix?: string) => Promise<boolean>
   disconnectDevice: (type: DeviceType) => void
   startDevice: (type: DeviceType, reset?: boolean) => Promise<void>
   stopDevice: (type: DeviceType, pause?: boolean) => Promise<void>
   setTreadmillTargets: (speed: number, incline: number) => Promise<void>
   setFtmsTreadmillTarget: (field: 'speed' | 'incline', value: number) => Promise<void>
+  setResistanceTarget: (type: DeviceType, value: number) => Promise<void>
   resetAllDevices: () => void
   /** ThinkFit 车表（FFF0 协议）状态与操作 */
   consoles: Partial<Record<DeviceType, ConsoleState>>
@@ -134,7 +141,6 @@ const HEART_RATE_MEASUREMENT = '2a37'
 
 // FTMS Control Point opcodes
 const CP_REQUEST_CONTROL = 0x00
-const CP_RESET = 0x01
 const CP_START = 0x07
 const CP_STOP = 0x08
 
@@ -184,6 +190,7 @@ export function DeviceProvider({ children }: { children: ReactNode }) {
   useEffect(() => { void refreshNavigation() }, [refreshNavigation])
   const [devices, setDevices] = useState<Record<DeviceType, DeviceState>>(initialDevices)
   const gattRefs = useRef<Record<string, GattRef>>({})
+  const disconnecting = useRef<Partial<Record<DeviceType, Promise<void>>>>({})
   const treadmillSteps = useRef<{ time: number; count: number } | null>(null)
 
   const supported = bleAdapter.isSupported()
@@ -224,7 +231,12 @@ export function DeviceProvider({ children }: { children: ReactNode }) {
       try { gatt.unsubscribeData() } catch { /* ignore */ }
     }
     delete gattRefs.current[id]
-    if (gatt?.connection) void gatt.connection.disconnect().catch(() => undefined)
+    if (gatt?.connection) {
+      const pending = gatt.connection.disconnect().catch(() => undefined).finally(() => {
+        if (disconnecting.current[type] === pending) delete disconnecting.current[type]
+      })
+      disconnecting.current[type] = pending
+    }
     setConsoles((prev) => {
       if (!prev[type]) return prev
       const next = { ...prev }
@@ -233,7 +245,7 @@ export function DeviceProvider({ children }: { children: ReactNode }) {
     })
     setDevices((prev) => ({
       ...prev,
-      [type]: { ...prev[type], status: 'idle', connected: false, metrics: {}, treadmillLimits: undefined, treadmillProtocol: undefined, running: false, name: i18n.t(DEFAULT_NAMES[type]) },
+      [type]: { ...prev[type], status: 'idle', connected: false, metrics: {}, treadmillLimits: undefined, treadmillProtocol: undefined, resistanceRange: undefined, running: false, name: i18n.t(DEFAULT_NAMES[type]) },
     }))
   }, [])
 
@@ -441,11 +453,18 @@ export function DeviceProvider({ children }: { children: ReactNode }) {
       let consoleClient: ThinkFitConsole | undefined
       let unsubscribeData: (() => void) | undefined
       let readsPrivateTelemetry = false
+      let resistanceRange: TreadmillRange | undefined
+      let confirmCardioProtocol: (() => void) | undefined
       const treadmillLimits: TreadmillLimits = {}
       let useWriteResponse = false
       let supportsConsoleConfiguration = true
+      let connectionLost = false
       try {
-        connection = await bleAdapter.connect(device, () => disconnectDevice(type))
+        await disconnecting.current[type]
+        connection = await bleAdapter.connect(device, () => {
+          connectionLost = true
+          if (connection && gattRefs.current[type]?.connection === connection) disconnectDevice(type)
+        })
 
         // 心率带走 Heart Rate Service
         if (type === 'heartRate') {
@@ -453,6 +472,7 @@ export function DeviceProvider({ children }: { children: ReactNode }) {
           unsubscribeData = await hrChar.startNotifications((bytes) => {
             updateMetrics('heartRate', parseHeartRateData(bytes))
           })
+          if (connectionLost) throw new Error('BLE connection ended during setup')
           gattRefs.current[String(type)] = { connection, unsubscribeData }
           setDevices((prev) => ({
             ...prev,
@@ -463,10 +483,8 @@ export function DeviceProvider({ children }: { children: ReactNode }) {
 
         // 旧版跑步机按特征属性发现私有协议通道。
         try {
-          const pair = type === 'treadmill'
-            ? selectPrivateTreadmillCharacteristics(await connection.listCharacteristics(TF_SERVICE))
-            : null
-          if (type === 'treadmill' && !pair) throw new Error('Private treadmill characteristics unavailable')
+          const pair = selectPrivateTreadmillCharacteristics(await connection.listCharacteristics(TF_SERVICE))
+          if (!pair) throw new Error('Private characteristics unavailable')
           if (pair) {
             supportsConsoleConfiguration = normalizeUuid(pair.notify.uuid) === normalizeUuid(TF_NOTIFY) &&
               normalizeUuid(pair.write.uuid) === normalizeUuid(TF_WRITE)
@@ -476,7 +494,7 @@ export function DeviceProvider({ children }: { children: ReactNode }) {
           useWriteResponse = Boolean(pair?.write.properties.write && !pair.write.properties.writeWithoutResponse)
           consoleClient = new ThinkFitConsole({
             subscribe: (listener) => notifyChar.startNotifications((bytes) => {
-              if (readsPrivateTelemetry) {
+              if (readsPrivateTelemetry && type === 'treadmill') {
                 const metrics = parsePrivateTreadmillData(bytes)
                 if (bytes[0] === 0x02 && bytes[1] === 0x51) updateMetrics(type, {
                   ...metrics,
@@ -490,6 +508,18 @@ export function DeviceProvider({ children }: { children: ReactNode }) {
                     ...previous,
                     treadmill: { ...previous.treadmill, treadmillLimits: { ...treadmillLimits } },
                   }))
+                }
+              } else if (readsPrivateTelemetry) {
+                const packet = parsePrivateCardioPacket(bytes)
+                if (packet) {
+                  confirmCardioProtocol?.()
+                  if (packet.metrics) updateMetrics(type, packet.metrics)
+                  if (packet.maxResistance !== undefined && packet.maxResistance > 0) {
+                    resistanceRange = { min: 0, max: packet.maxResistance, step: 1 }
+                    const active = gattRefs.current[type]
+                    if (active && active.connection === connection) active.resistanceRange = resistanceRange
+                    setDevices((previous) => ({ ...previous, [type]: { ...previous[type], resistanceRange } }))
+                  }
                 }
               }
               listener(bytes)
@@ -517,15 +547,29 @@ export function DeviceProvider({ children }: { children: ReactNode }) {
 
         const config = navigationRef.current ?? await refreshNavigation()
         const preference = matchBleRule(config, device.name ?? '', type)?.preferredProtocol
-        const usePrivateFirst = type === 'treadmill' && preference === 'PRIVATE'
-        if (usePrivateFirst && consoleClient) {
+        const usePrivateFirst = preference === 'PRIVATE'
+        const probePrivate = async (client: ThinkFitConsole) => {
           readsPrivateTelemetry = true
+          let timer: ReturnType<typeof setTimeout> | undefined
           try {
-            await consoleClient.send(TREADMILL_TELEMETRY_REQUEST)
+            if (type === 'treadmill') await client.send(TREADMILL_TELEMETRY_REQUEST)
+            else {
+              const response = new Promise<void>((resolve, reject) => {
+                confirmCardioProtocol = resolve
+                timer = setTimeout(() => reject(new Error('Private cardio reply unavailable')), 2000)
+              })
+              await Promise.all([response, client.send(CARDIO_STATUS_REQUEST)])
+            }
           } catch (error) {
             readsPrivateTelemetry = false
-            console.warn('首选私有通道不可用，尝试 FTMS：', error)
+            throw error
+          } finally {
+            clearTimeout(timer)
+            confirmCardioProtocol = undefined
           }
+        }
+        if (usePrivateFirst && consoleClient) {
+          try { await probePrivate(consoleClient) } catch (error) { console.warn('首选私有通道不可用，尝试 FTMS：', error) }
         }
         // 2) 标准 FTMS 实时数据
         let controlPoint: BleCharacteristic | undefined
@@ -544,17 +588,23 @@ export function DeviceProvider({ children }: { children: ReactNode }) {
             heartRate: ROWER_DATA, // 不会走到这里
           }
           if (!readsPrivateTelemetry && connection.hasService(FTMS_SERVICE)) {
-            const dataChar = await connection.getCharacteristic(FTMS_SERVICE, charMap[type])
+            const characteristics = await connection.listCharacteristics(FTMS_SERVICE)
+            const stepClimber = type === 'stair' && !characteristics.some(({ uuid }) => normalizeUuid(uuid) === normalizeUuid(STAIR_CLIMBER_DATA))
+            const dataChar = await connection.getCharacteristic(FTMS_SERVICE, stepClimber ? '2acf' : charMap[type])
             unsubscribeData = await dataChar.startNotifications((bytes) => {
               const parsed = type === 'treadmill'
                 ? parseTreadmillData(bytes)
                 : type === 'bike' || type === 'spin' || type === 'upright'
                   ? parseIndoorBikeData(bytes)
-                  : parseRowerData(bytes)
+                : type === 'elliptical' ? parseCrossTrainerData(bytes)
+                  : type === 'stair' ? parseClimberData(bytes, stepClimber) : parseRowerData(bytes)
               updateMetrics(type, parsed)
             })
             try {
-              controlPoint = await connection.getCharacteristic(FTMS_SERVICE, CONTROL_POINT)
+              if (characteristics.some(({ uuid, properties }) => normalizeUuid(uuid) === normalizeUuid(CONTROL_POINT) &&
+                properties.write && (properties.indicate || properties.notify))) {
+                controlPoint = await connection.getCharacteristic(FTMS_SERVICE, CONTROL_POINT)
+              }
             } catch {
               // 部分器械不暴露 Control Point，降级为仅读取数据
             }
@@ -564,15 +614,14 @@ export function DeviceProvider({ children }: { children: ReactNode }) {
         }
         if (!unsubscribeData) {
           // 无 FTMS：ThinkFit 车表仅提供配置能力时也能保持连接
-          if (!consoleClient || type === 'ski') {
+          if (!consoleClient) {
             throw new Error('未找到可用的器械服务')
           }
-          if (type === 'treadmill') {
+          {
             const client = consoleClient
             if (!readsPrivateTelemetry) {
-              if (usePrivateFirst) throw new Error('未找到可用的跑步机数据通道')
-              readsPrivateTelemetry = true
-              await client.send(TREADMILL_TELEMETRY_REQUEST)
+              if (usePrivateFirst) throw new Error('未找到可用的器械数据通道')
+              await probePrivate(client)
             }
             let pending = false
             let tick = 0
@@ -580,7 +629,9 @@ export function DeviceProvider({ children }: { children: ReactNode }) {
               if (pending) return
               pending = true
               tick += 1
-              const request = tick % 8 === 1 && !treadmillLimits.speed ? TREADMILL_SPEED_RANGE_REQUEST
+              const request = type !== 'treadmill'
+                ? tick % 8 === 1 && !resistanceRange ? CARDIO_LIMIT_REQUEST : tick % 2 === 0 ? CARDIO_STATUS_REQUEST : CARDIO_DATA_REQUEST
+                : tick % 8 === 1 && !treadmillLimits.speed ? TREADMILL_SPEED_RANGE_REQUEST
                 : tick % 8 === 3 && !treadmillLimits.incline ? TREADMILL_INCLINE_RANGE_REQUEST
                   : TREADMILL_TELEMETRY_REQUEST
               void client.send(request).catch((error) => {
@@ -594,6 +645,13 @@ export function DeviceProvider({ children }: { children: ReactNode }) {
           }
         }
 
+        if (type !== 'treadmill' && controlPoint) {
+          try {
+            const characteristic = await connection.getCharacteristic(FTMS_SERVICE, '2ad6')
+            resistanceRange = parseFtmsTreadmillRange(await characteristic.read?.(), 'resistance')
+          } catch { /* 部分器械只上报当前阻力 */ }
+        }
+
         if (type === 'treadmill' && controlPoint && connection.hasService(FTMS_SERVICE)) {
           for (const [field, uuid] of [['speed', '2ad4'], ['incline', '2ad5']] as const) {
             try {
@@ -605,15 +663,18 @@ export function DeviceProvider({ children }: { children: ReactNode }) {
             }
           }
         }
+        if (connectionLost) throw new Error('BLE connection ended during setup')
         gattRefs.current[String(type)] = {
           connection, controlPoint, unsubscribeData, console: consoleClient,
-          privateTreadmill: readsPrivateTelemetry ? consoleClient : undefined,
+          privateTreadmill: readsPrivateTelemetry && type === 'treadmill' ? consoleClient : undefined,
+          privateCardio: readsPrivateTelemetry && type !== 'treadmill' ? consoleClient : undefined,
+          resistanceRange,
           treadmillLimits: type === 'treadmill' ? treadmillLimits : undefined,
         }
         setDevices((prev) => ({
           ...prev,
           [type]: { ...prev[type], status: 'connected', connected: true, name: device.name || prev[type].name,
-            treadmillLimits: type === 'treadmill' ? { ...treadmillLimits } : undefined,
+            treadmillLimits: type === 'treadmill' ? { ...treadmillLimits } : undefined, resistanceRange,
             treadmillProtocol: type === 'treadmill' ? (readsPrivateTelemetry ? 'private' : 'ftms') : undefined },
         }))
 
@@ -638,10 +699,12 @@ export function DeviceProvider({ children }: { children: ReactNode }) {
     async (type: DeviceType, _deviceId?: string, namePrefix?: string) => {
       try {
         const device = await pickDevice(type, namePrefix)
-        if (!device) return
+        if (!device) return false
         await attachDevice(type, device)
+        return true
       } catch (error) {
         if (!(error instanceof Error && error.name === 'NotFoundError')) setStatus(type, 'failed')
+        return false
       }
     },
     [pickDevice, attachDevice, setStatus],
@@ -714,16 +777,10 @@ export function DeviceProvider({ children }: { children: ReactNode }) {
         } else {
           throw new Error('Treadmill control unavailable')
         }
+      } else if (gatt?.privateCardio) {
+        await gatt.privateCardio.send(privateCardioControl(reset ? 'start' : 'resume'))
       } else if (gatt?.controlPoint) {
-        try {
-          await gatt.controlPoint.writeWithoutResponse(new Uint8Array([CP_REQUEST_CONTROL]))
-          if (reset) {
-            await gatt.controlPoint.writeWithoutResponse(new Uint8Array([CP_RESET]))
-          }
-          await gatt.controlPoint.writeWithoutResponse(new Uint8Array([CP_START]))
-        } catch (e) {
-          console.warn('控制指令写入失败，仍以设备数据为准：', e)
-        }
+        await sendFtmsControl(gatt.controlPoint, [[CP_REQUEST_CONTROL], [CP_START]])
       }
       setDevices((prev) => ({
         ...prev,
@@ -760,6 +817,20 @@ export function DeviceProvider({ children }: { children: ReactNode }) {
     await sendFtmsControl(gatt.controlPoint, [[field === 'speed' ? 0x02 : 0x03, target & 0xff, (target >> 8) & 0xff]])
   }, [])
 
+  const setResistanceTarget = useCallback(async (type: DeviceType, value: number) => {
+    const gatt = gattRefs.current[type]
+    const range = gatt?.resistanceRange
+    if (!range || !Number.isFinite(value) || value < range.min - 1e-6 || value > range.max + 1e-6 ||
+      isResistanceDisabled(navigationRef.current, gatt?.connection?.device.name ?? '')) {
+      throw new Error('Resistance control unavailable or outside device limits')
+    }
+    if (gatt?.privateCardio) await gatt.privateCardio.send(privateCardioResistance(Math.round(value)))
+    else if (gatt?.controlPoint) {
+      const target = Math.round(value * 10)
+      await sendFtmsControl(gatt.controlPoint, [[0x04, target & 0xff, (target >> 8) & 0xff]])
+    }
+  }, [])
+
   const stopDevice = useCallback(
     async (type: DeviceType, pause = false) => {
       if (type === 'heartRate') return
@@ -772,10 +843,10 @@ export function DeviceProvider({ children }: { children: ReactNode }) {
         } else {
           throw new Error('Treadmill control unavailable')
         }
+      } else if (gatt?.privateCardio) {
+        await gatt.privateCardio.send(privateCardioControl(pause ? 'pause' : 'stop'))
       } else if (gatt?.controlPoint) {
-        try {
-          await gatt.controlPoint.writeWithoutResponse(new Uint8Array([CP_STOP]))
-        } catch { /* ignore */ }
+        await sendFtmsControl(gatt.controlPoint, [[CP_STOP, pause ? 0x02 : 0x01]])
       }
       setDevices((prev) => ({ ...prev, [type]: { ...prev[type], running: false } }))
     },
@@ -789,9 +860,7 @@ export function DeviceProvider({ children }: { children: ReactNode }) {
       const id = String(type)
       // 向真实器械发送 STOP
       const gatt = gattRefs.current[id]
-      if (gatt?.controlPoint) {
-        void gatt.controlPoint.writeWithoutResponse(new Uint8Array([CP_STOP])).catch(() => undefined)
-      }
+      if (gatt) void stopDevice(type).catch(() => undefined)
     })
     // 清空所有器械的 metrics 与 running 状态（心率带数据保留）
     setDevices((prev) => {
@@ -801,7 +870,7 @@ export function DeviceProvider({ children }: { children: ReactNode }) {
       })
       return next
     })
-  }, [])
+  }, [stopDevice])
 
   return (
     <DeviceContext.Provider
@@ -820,6 +889,7 @@ export function DeviceProvider({ children }: { children: ReactNode }) {
         stopDevice,
         setTreadmillTargets,
         setFtmsTreadmillTarget,
+        setResistanceTarget,
         resetAllDevices,
         consoles,
         consoleRead,

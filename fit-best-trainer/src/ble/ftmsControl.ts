@@ -1,7 +1,7 @@
 import type { BleCharacteristic } from '../platform/ble'
 import type { TreadmillRange } from './privateTreadmill'
 
-export function parseFtmsTreadmillRange(bytes: Uint8Array | undefined, field: 'speed' | 'incline'): TreadmillRange | undefined {
+export function parseFtmsTreadmillRange(bytes: Uint8Array | undefined, field: 'speed' | 'incline' | 'resistance'): TreadmillRange | undefined {
   if (!bytes || bytes.byteLength < 6) return
   const view = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength)
   const scale = field === 'speed' ? 100 : 10

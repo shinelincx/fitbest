@@ -7,7 +7,7 @@ import type { MachineSession, MachineType, StrengthSession } from '../types'
 import { MACHINES, MACHINE_MAP, MODE_LABELS } from '../mock/data'
 import { EQUIPMENT_LABELS } from '../mock/strength'
 import { PIN_MACHINE_MAP } from '../mock/pinMachines'
-import { formatDate, formatDistance, formatDuration } from '../utils/stats'
+import { formatDate, formatDuration } from '../utils/stats'
 import { formatVolume } from '../utils/strength'
 import { formatTime } from '../utils/format'
 import { useToast } from '../components/Toast'
@@ -133,7 +133,7 @@ function RecordsList({ owner: user, sessionExpired, filter, setFilter }: {
                   <p className="text-sm font-medium">{it.app.toUpperCase()}</p>
                   <p className="mt-0.5 text-xs text-text-sub">{formatDate(it.date)} · {formatDuration(it.durationSec)}</p>
                 </div>
-                {it.distanceM > 0 && <p className="font-mono text-sm font-bold">{formatDistance(it.distanceM)}</p>}
+                {it.distanceM > 0 && <p className="font-mono text-sm font-bold">{(it.distanceM / 1000).toFixed(2)} km</p>}
               </div>
             )
           })}
@@ -217,7 +217,7 @@ function renderCardio(
         </div>
         <div className="flex items-center gap-2">
           <div className="text-right">
-            <p className="font-mono text-sm font-bold tabular-nums">{formatDistance(s.distanceM)}</p>
+            <p className="font-mono text-sm font-bold tabular-nums">{(s.distanceM / 1000).toFixed(2)} km</p>
             <p className="text-[13px] text-text-sub">{s.calories} kcal</p>
           </div>
           <ChevronDown size={15} className={`text-text-sub transition-transform ${open ? 'rotate-180' : ''}`} />

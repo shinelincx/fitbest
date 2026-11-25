@@ -9,6 +9,9 @@ export interface DeviceMetrics {
   strokeCount?: number
   pace?: number
   resistance?: number
+  floors?: number
+  elevationGain?: number
+  strideCount?: number
   incline?: number
   privateTreadmillActive?: boolean
   privateTreadmillCountdown?: number
@@ -153,8 +156,13 @@ export function parseRowerData(input: BleBuffer): DeviceMetrics {
 
 export function parseIndoorBikeData(input: BleBuffer): DeviceMetrics {
   const reader = new PacketReader(toView(input))
-  const flags = reader.u16() ?? 0
+  const flags = reader.u16()
+  if (flags === undefined) return {}
   const m: DeviceMetrics = {}
+  if (!(flags & 1)) {
+    const speed = reader.u16()
+    if (speed !== undefined) m.speed = speed / 100
+  }
   if (flags & 0x02) reader.skip(2)
   if (flags & 0x04) {
     const cadence = reader.u16()
@@ -162,10 +170,72 @@ export function parseIndoorBikeData(input: BleBuffer): DeviceMetrics {
   }
   if (flags & 0x08) reader.skip(2)
   if (flags & 0x10) m.distance = reader.u24()
-  if (flags & 0x1000) m.power = reader.i16()
-  if (flags & 0x400) m.calories = reader.u16()
-  if (flags & 0x10000) m.heartRate = reader.u8()
-  if (flags & 0x8000) m.elapsedTime = reader.u16()
+  if (flags & 0x20) m.resistance = readResistance(reader, flags >> 6, [2, 2, 5, 1, 1, 2, 2])
+  if (flags & 0x40) m.power = reader.i16()
+  if (flags & 0x80) reader.skip(2)
+  if (flags & 0x100) { m.calories = reader.u16(); reader.skip(3) }
+  if (flags & 0x200) m.heartRate = reader.u8()
+  if (flags & 0x400) reader.skip(1)
+  if (flags & 0x800) m.elapsedTime = reader.u16()
+  return m
+}
+
+// Some legacy consoles use a two-byte resistance field in their telemetry.
+function readResistance(reader: PacketReader, trailingFlags: number, fieldSizes: number[]) {
+  const trailingSize = fieldSizes.reduce((size, length, index) => size + ((trailingFlags & (1 << index)) ? length : 0), 0)
+  return reader.remaining === trailingSize + 2 ? reader.i16() : reader.u8()
+}
+
+export function parseCrossTrainerData(input: BleBuffer): DeviceMetrics {
+  const reader = new PacketReader(toView(input))
+  const flags = reader.u24()
+  if (flags === undefined) return {}
+  const m: DeviceMetrics = {}
+  if (!(flags & 1)) {
+    const speed = reader.u16()
+    if (speed !== undefined) m.speed = speed / 100
+  }
+  if (flags & 0x02) reader.skip(2)
+  if (flags & 0x04) m.distance = reader.u24()
+  if (flags & 0x08) { m.cadence = reader.u16(); reader.skip(2) }
+  if (flags & 0x10) {
+    const strides = reader.u16()
+    if (strides !== undefined) m.strideCount = strides / 10
+  }
+  if (flags & 0x20) { m.elevationGain = reader.u16(); reader.skip(2) }
+  if (flags & 0x40) {
+    const incline = reader.i16()
+    if (incline !== undefined) m.incline = incline / 10
+    reader.skip(2)
+  }
+  if (flags & 0x80) m.resistance = readResistance(reader, flags >> 8, [2, 2, 5, 1, 1, 2, 2])
+  if (flags & 0x100) m.power = reader.i16()
+  if (flags & 0x200) reader.skip(2)
+  if (flags & 0x400) { m.calories = reader.u16(); reader.skip(3) }
+  if (flags & 0x800) m.heartRate = reader.u8()
+  if (flags & 0x1000) reader.skip(1)
+  if (flags & 0x2000) m.elapsedTime = reader.u16()
+  return m
+}
+
+export function parseClimberData(input: BleBuffer, stepClimber = false): DeviceMetrics {
+  const reader = new PacketReader(toView(input))
+  const flags = reader.u16()
+  if (flags === undefined) return {}
+  const m: DeviceMetrics = {}
+  if (!(flags & 1)) {
+    m.floors = reader.u16()
+    if (stepClimber) m.strokeCount = reader.u16()
+  }
+  if (flags & 0x02) m.cadence = reader.u16()
+  if (flags & 0x04) reader.skip(2)
+  if (flags & 0x08) m.elevationGain = reader.u16()
+  if (!stepClimber && (flags & 0x10)) m.strideCount = reader.u16()
+  const optional = flags >> (stepClimber ? 4 : 5)
+  if (optional & 1) { m.calories = reader.u16(); reader.skip(3) }
+  if (optional & 2) m.heartRate = reader.u8()
+  if (optional & 4) reader.skip(1)
+  if (optional & 8) m.elapsedTime = reader.u16()
   return m
 }
 

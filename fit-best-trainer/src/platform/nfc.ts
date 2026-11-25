@@ -27,18 +27,14 @@ function decodeNativeText(record: NdefRecord): string | null {
   return new TextDecoder(encoding).decode(payload.slice(start)).trim()
 }
 
-async function readNativeText(): Promise<string> {
-  const { supported } = await CapacitorNfc.isSupported()
-  if (!supported) throw new Error('当前设备不支持 NFC，请使用搜索或扫码')
-  const { status } = await CapacitorNfc.getStatus()
-  if (status === 'NFC_DISABLED') throw new Error('NFC 未开启，请在系统设置中开启后重试')
-  if (status !== 'NFC_OK') throw new Error('当前设备不支持 NFC，请使用搜索或扫码')
-
+async function readNativeText(signal: AbortSignal): Promise<string> {
+  signal.throwIfAborted()
   return new Promise<string>((resolve, reject) => {
     let settled = false
     const handles: PluginListenerHandle[] = []
     const cleanup = () => {
-      handles.forEach((handle) => void handle.remove())
+      signal.removeEventListener('abort', onAbort)
+      handles.forEach((handle) => void handle.remove().catch(() => undefined))
       void CapacitorNfc.stopScanning().catch(() => undefined)
     }
     const finish = (text?: string, error?: unknown) => {
@@ -49,11 +45,25 @@ async function readNativeText(): Promise<string> {
       else if (text) resolve(text)
       else reject(new Error('无法识别的器械标签'))
     }
+    const onAbort = () => finish(undefined, abortError())
+    signal.addEventListener('abort', onAbort, { once: true })
+    const addHandle = async (pending: Promise<PluginListenerHandle>) => {
+      const handle = await pending
+      if (settled) await handle.remove()
+      else handles.push(handle)
+    }
 
     void (async () => {
-      handles.push(
-        await CapacitorNfc.addListener('nfcEvent', (event) => {
-          for (const record of event.tag.ndefMessage ?? []) {
+      const { supported } = await CapacitorNfc.isSupported()
+      if (settled) return
+      if (!supported) throw new Error('当前设备不支持 NFC，请使用搜索或扫码')
+      const { status } = await CapacitorNfc.getStatus()
+      if (settled) return
+      if (status === 'NFC_DISABLED') throw new Error('NFC 未开启，请在系统设置中开启后重试')
+      if (status !== 'NFC_OK') throw new Error('当前设备不支持 NFC，请使用搜索或扫码')
+      await addHandle(
+        CapacitorNfc.addListener('nfcEvent', (event) => {
+          for (const record of event.tag?.ndefMessage ?? []) {
             const text = decodeNativeText(record)
             if (text) {
               finish(text)
@@ -63,11 +73,13 @@ async function readNativeText(): Promise<string> {
           finish(undefined, new Error('无法识别的器械标签'))
         }),
       )
-      handles.push(
-        await CapacitorNfc.addListener('nfcSessionEnd', () => finish(undefined, abortError())),
+      if (settled) return
+      await addHandle(
+        CapacitorNfc.addListener('nfcSessionEnd', () => finish(undefined, abortError())),
       )
-      handles.push(
-        await App.addListener('appStateChange', ({ isActive }) => {
+      if (settled) return
+      await addHandle(
+        App.addListener('appStateChange', ({ isActive }) => {
           if (!isActive) finish(undefined, abortError())
         }),
       )
@@ -80,7 +92,8 @@ async function readNativeText(): Promise<string> {
   })
 }
 
-async function readWebText(): Promise<string> {
+async function readWebText(signal: AbortSignal): Promise<string> {
+  signal.throwIfAborted()
   const NDEF = (window as unknown as { NDEFReader?: new () => WebNdefReader }).NDEFReader
   if (!NDEF) throw new Error('当前设备不支持 NFC，请使用搜索或扫码')
 
@@ -91,6 +104,7 @@ async function readWebText(): Promise<string> {
     const cleanup = () => {
       reader.removeEventListener('reading', onReading)
       document.removeEventListener('visibilitychange', onVisibility)
+      signal.removeEventListener('abort', onAbort)
     }
     const finish = (text?: string, error?: unknown) => {
       if (settled) return
@@ -103,21 +117,25 @@ async function readWebText(): Promise<string> {
     }
     const onReading = (event: WebNdefReadingEvent) => {
       const record = event.message?.records?.find((item) => item.recordType === 'text')
-      if (!record?.data) return
+      if (!record?.data) {
+        finish(undefined)
+        return
+      }
       const text = new TextDecoder(record.encoding || 'utf-8').decode(record.data).trim()
       finish(text || undefined)
     }
     const onVisibility = () => {
       if (document.hidden) finish(undefined, abortError())
     }
+    const onAbort = () => finish(undefined, abortError())
 
     reader.addEventListener('reading', onReading)
     document.addEventListener('visibilitychange', onVisibility)
-    controller.signal.addEventListener('abort', () => finish(undefined, abortError()), { once: true })
+    signal.addEventListener('abort', onAbort, { once: true })
     reader.scan({ signal: controller.signal }).catch((error) => finish(undefined, error))
   })
 }
 
-export function readTextOnce(): Promise<string> {
-  return isNative ? readNativeText() : readWebText()
+export function readTextOnce(signal: AbortSignal): Promise<string> {
+  return isNative ? readNativeText(signal) : readWebText(signal)
 }

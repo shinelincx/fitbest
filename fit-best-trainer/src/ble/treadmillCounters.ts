@@ -1,6 +1,6 @@
 import type { DeviceMetrics } from './ftms'
 
-const counters = ['elapsedTime', 'distance', 'calories', 'strokeCount'] as const
+const counters = ['elapsedTime', 'distance', 'calories', 'strokeCount', 'floors', 'elevationGain', 'strideCount'] as const
 export type TreadmillCounterOffsets = Partial<Pick<DeviceMetrics, (typeof counters)[number]>>
 
 export function resumeTreadmillCounters(totals: DeviceMetrics, resumed: DeviceMetrics, offsets: TreadmillCounterOffsets) {
