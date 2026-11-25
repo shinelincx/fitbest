@@ -58,30 +58,45 @@ class MachineNavigationPostgresTest {
             assertThat(body.at("/bleRules/0/preferredProtocol").asText()).isEqualTo("PRIVATE");
             assertThat(body.at("/bleRules/1/machineType").asText()).isEqualTo("ski");
             assertThat(body.at("/bleRules/1/id").isMissingNode()).isTrue();
-            assertThat(body.path("resistanceDisabledPatterns").isArray()).isTrue();
+            int patterns = 0;
+            for (var rule : body.path("bleRules")) {
+                int size = rule.path("patterns").size();
+                assertThat(size).isBetween(1, 100);
+                patterns += size;
+            }
+            assertThat(patterns).isEqualTo(1185);
+            assertThat(body.path("resistanceDisabledPatterns").size()).isEqualTo(15);
+            assertThat(db.queryForObject("select count(*) from legacy_machine_navigation_rules", Integer.class)).isEqualTo(1361);
             assertThat(http.getForEntity(ADMIN, JsonNode.class).getStatusCode().value()).isEqualTo(401);
             assertThat(request(HttpMethod.GET, ADMIN, orgAdmin, null).getStatusCode().value()).isEqualTo(403);
+            assertMatch(platform, "yj01-s7pro-000019", "treadmill", "contains", "PRIVATE");
+            assertMatch(platform, "kPOWER-00029", "ski", "prefix", "FTMS");
+            assertMatch(platform, "tf-tripro-000001", "treadmill", "contains", "PRIVATE");
+            var ambiguous = preview(platform, "CNKW-727-000001");
+            assertThat(ambiguous.at("/matchedRules/0/machineType").asText()).isEqualTo("spin");
+            assertThat(ambiguous.at("/matchedRules/1/machineType").asText()).isEqualTo("elliptical");
+            assertThat(ambiguous.path("resistanceDisabled").asBoolean()).isTrue();
 
             String rules = ADMIN + "/ble-rules";
-            assertThat(request(HttpMethod.POST, rules, orgAdmin, rule("prefix", "Demo", 30)).getStatusCode().value())
+            assertThat(request(HttpMethod.POST, rules, orgAdmin, rule("prefix", "Demo", 3000)).getStatusCode().value())
                 .isEqualTo(403);
-            assertThat(request(HttpMethod.POST, rules, platform, rule("exact", " yj01-s7pro-000007 ", 30)).getStatusCode().value())
+            assertThat(request(HttpMethod.POST, rules, platform, rule("exact", " kpower-00028 ", 3000)).getStatusCode().value())
                 .isEqualTo(409);
             assertThat(request(HttpMethod.POST, rules, platform, rule("prefix", "Demo", 10)).getStatusCode().value())
                 .isEqualTo(409);
-            assertThat(request(HttpMethod.POST, rules, platform, rule("prefix", "Kpower-", 30)).getStatusCode().value())
+            assertThat(request(HttpMethod.POST, rules, platform, rule("prefix", "Kpower-", 3000)).getStatusCode().value())
                 .isEqualTo(200);
             assertThat(request(HttpMethod.PUT, ADMIN + "/resistance-disabled-patterns", platform,
                 Map.of("patterns", List.of("POWER"))).getStatusCode().value()).isEqualTo(200);
 
-            var preview = request(HttpMethod.GET, ADMIN + "/preview?name=kPOWER-00028", platform, null).getBody();
-            assertThat(preview.path("matchedRules").size()).isEqualTo(2);
+            var preview = preview(platform, "kPOWER-00028");
+            assertThat(preview.path("matchedRules").size()).isEqualTo(3);
             assertThat(preview.at("/matchedRules/0/match").asText()).isEqualTo("exact");
             assertThat(preview.at("/matchedRules/1/match").asText()).isEqualTo("prefix");
             assertThat(preview.path("resistanceDisabled").asBoolean()).isTrue();
 
-            String prefixId = preview.at("/matchedRules/1/id").asText();
-            var disabled = new java.util.HashMap<>(rule("prefix", "Kpower-", 30));
+            String prefixId = preview.at("/matchedRules/2/id").asText();
+            var disabled = new java.util.HashMap<>(rule("prefix", "Kpower-", 3000));
             disabled.put("enabled", false);
             assertThat(request(HttpMethod.PUT, rules + "/" + prefixId, platform, disabled).getStatusCode().value())
                 .isEqualTo(200);
@@ -94,7 +109,7 @@ class MachineNavigationPostgresTest {
 
             var refreshed = http.getForEntity(PUBLIC, JsonNode.class).getBody();
             assertThat(refreshed.path("machineTypes").size()).isEqualTo(7);
-            assertThat(refreshed.path("bleRules").size()).isEqualTo(2);
+            assertThat(refreshed.path("bleRules").size()).isEqualTo(body.path("bleRules").size());
             assertThat(refreshed.at("/bleRules/1/machineType").asText()).isEqualTo("ski");
             assertThat(refreshed.at("/resistanceDisabledPatterns/0").asText()).isEqualTo("POWER");
             assertThat(db.queryForObject("select count(*) from audit_logs where admin_id = ?", Integer.class, platformId))
@@ -119,6 +134,17 @@ class MachineNavigationPostgresTest {
         var headers = new HttpHeaders();
         headers.setBearerAuth(token);
         return http.exchange(path, method, new HttpEntity<>(data, headers), JsonNode.class);
+    }
+
+    private JsonNode preview(String token, String name) {
+        return request(HttpMethod.GET, ADMIN + "/preview?name=" + name, token, null).getBody();
+    }
+
+    private void assertMatch(String token, String name, String type, String match, String protocol) {
+        var first = preview(token, name).at("/matchedRules/0");
+        assertThat(first.path("machineType").asText()).isEqualTo(type);
+        assertThat(first.path("match").asText()).isEqualTo(match);
+        assertThat(first.path("preferredProtocol").asText()).isEqualTo(protocol);
     }
 
     private static Map<String, Object> rule(String match, String pattern, int priority) {

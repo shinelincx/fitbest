@@ -176,9 +176,10 @@ public class MachineNavigationService {
         for (Rule other : otherRules) {
             if (!other.enabled()) continue;
             if (rule.priority() == other.priority()) throw BizException.conflict("已启用规则使用了该优先级");
-            if (rule.match() == other.match() && other.patterns().stream().map(MachineNavigationService::normalize)
+            if (rule.machineType() == other.machineType() && rule.match() == other.match()
+                    && other.patterns().stream().map(MachineNavigationService::normalize)
                     .anyMatch(patterns::contains)) {
-                throw BizException.conflict("已有启用规则使用相同的匹配方式和广播名");
+                throw BizException.conflict("同机型已有启用规则使用相同的匹配方式和广播名");
             }
         }
     }

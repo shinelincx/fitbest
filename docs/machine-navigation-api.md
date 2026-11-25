@@ -22,7 +22,7 @@ App 启动或刷新配置时可匿名调用 `GET /api/v1/machine-navigation`。�
 - `bleRules` 按 `priority` 升序排列。广播名和规则文本去掉首尾空白并忽略大小写，`exact` 匹配全文，`prefix` 匹配前缀，`contains` 匹配子串。同一规则内的 `patterns` 为任一命中，多个规则命中时以第一条为准。
 - `preferredProtocol` 是 `FTMS`（`1826`）或 `PRIVATE`（旧端 `FFF0`）。客户端需发现服务和训练所需的 GATT 特征并成功订阅，才可使用该数据通道。首选不可用时尝试另一条可用通道。手动选机保留用户选定的类型，可应用同类型规则。无规则或设备未知时继续走现有识别和手动连接。
 - `resistanceDisabledPatterns` 等价于旧 `DrapList` 的子串匹配，沿用同样的空白和大小写处理。该字段独立于机型和协议偏好。列表为空时返回 `[]`。请求失败时客户端可使用最近一次有效配置，成功返回空列表时以新结果为准，并保留手动入口。
-- 成功返回 `200`。服务端错误遵循现有 `{ "code": 500, "message": "…" }` 格式。管理端参数错误用 `400`，缺少有效会话用 `401`，无平台权限用 `403`，规则或导航项不存在用 `404`，启用规则优先级或匹配条件重复用 `409`。
+- 成功返回 `200`。服务端错误遵循现有 `{ "code": 500, "message": "…" }` 格式。管理端参数错误用 `400`，缺少有效会话用 `401`，无平台权限用 `403`，规则或导航项不存在用 `404`。启用规则优先级重复，或同机型内匹配方式和广播名重复，返回 `409`。跨机型的同名规则按优先级判定，手动选机后仅考虑所选机型的规则。
 
 ## 后台维护
 
@@ -39,6 +39,8 @@ App 启动或刷新配置时可匿名调用 `GET /api/v1/machine-navigation`。�
 
 ## 初始数据与联调
 
-首发仅下发 [Issue #9](https://github.com/shinelincx/fitbest/issues/9) 中两台样机的完整名称。`YJ01-S7Pro-000007` 匹配 `treadmill / PRIVATE`，`Kpower-00028` 匹配 `ski / FTMS`，禁调阻力名单初始为空。生产旧配置需要先核实，再导入系列匹配规则和 `DrapList`。导入时保留旧 `id=1` 和 `id=3` 的名称覆盖，滑雪机同机型的 FTMS 规则优先。旧 `id=36` 对应新 `ski`，使用划船机数据解析时仍按 `ski` 保存训练记录。旧 `id=2` 对应 `treadmill`，`id=5` 对应 `rower`。旧路径及 `BleList` 待确认消费方式和兼容需求后处理。
+Flyway V17 将 Issue #9 CSV 的 1,361 行完整存入 `legacy_machine_navigation_rules`，保留原片段、大小写、源顺序和重复记录。两台样机精确规则和已有运营配置优先。旧 `id=1/3` 合并到 `spin`，旧 `2/5/6/16/36` 依次映射到 `treadmill/rower/elliptical/stair/ski`。`ftmsble` 以 FTMS 前缀优先匹配，`bluename` 以私有协议子串匹配，长片段优先，同长度按旧机型顺序判定。同机型内相同匹配条件仅下发一次。滑雪机使用划船机数据解析时仍按 `ski` 保存。 [CSV 第一段](https://github.com/shinelincx/fitbest/issues/9#issuecomment-7158915030) · [CSV 第二段](https://github.com/shinelincx/fitbest/issues/9#issuecomment-7158916114)
+
+15 条 `DrapList` 已合入禁调阻力名单。跳绳（`id=10`）、抖抖机（`id=35`）和 3 条 `BleList` 保留在源表。旧配置缺少专门的风阻单车规则。
 
 联调先验证游客能读取配置，后台保存后刷新 GET 可见变化。App 接入后，用双协议 YJ01 验证确实从 `FFF0` 读取训练数据，用 `kPOWER-00028` 验证大小写匹配和 `ski` 记录。另覆盖无规则、多个条件命中、首选服务缺失、接口失败和空列表时的手动连接。
