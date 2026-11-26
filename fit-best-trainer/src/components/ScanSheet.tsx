@@ -12,11 +12,6 @@ import {
 import { useNativeBack } from '../platform/NativeRuntime'
 import { NATIVE_BACKGROUND_EVENT, isCancellation, isNative } from '../platform/runtime'
 
-export interface ScanResult {
-  type: DeviceType
-  name: string
-}
-
 export default function ScanSheet({
   open,
   onClose,
@@ -24,7 +19,7 @@ export default function ScanSheet({
 }: {
   open: boolean
   onClose: () => void
-  onScanned: (result: ScanResult) => void
+  onScanned: (raw: string) => void
 }) {
   const { t } = useTranslation()
   const videoRef = useRef<HTMLVideoElement | null>(null)
@@ -32,10 +27,11 @@ export default function ScanSheet({
   const detectorRef = useRef<{ detect: (s: HTMLVideoElement) => Promise<Array<{ rawValue: string }>> } | null>(null)
   const rafRef = useRef<number | null>(null)
   const [cameraOk, setCameraOk] = useState<boolean | null>(null)
-  const [error, setError] = useState('')
   const [picking, setPicking] = useState(false)
   const closeRef = useRef(onClose)
+  const scannedRef = useRef(onScanned)
   closeRef.current = onClose
+  scannedRef.current = onScanned
   useNativeBack(open, onClose)
 
   useEffect(() => {
@@ -43,7 +39,6 @@ export default function ScanSheet({
 
     let cancelled = false
     setPicking(false)
-    setError('')
     setCameraOk(null)
 
     const BD = (window as unknown as { BarcodeDetector?: new (opts?: { formats: string[] }) => unknown }).BarcodeDetector
@@ -117,25 +112,17 @@ export default function ScanSheet({
     }
 
     function handleRaw(raw: string) {
-      try {
-        const obj = JSON.parse(raw) as { type?: string; name?: string }
-        const type = (obj.type ?? '').trim() as DeviceType
-        const name = (obj.name ?? '').trim()
-        if (!type) throw new Error(t('二维码缺少 type'))
-        if (!MACHINES.some((m) => m.type === type)) throw new Error(t('未知器械类型：{{type}}', { type }))
-        onScanned({ type, name: name || type })
-      } catch (e) {
-        setError(e instanceof Error ? e.message : t('二维码无法识别'))
-        if (isNative) setCameraOk(false)
-      }
+      if (!cancelled) scannedRef.current(raw)
     }
 
     const closeOnBackground = () => closeRef.current()
     const closeOnHidden = () => {
       if (document.hidden) closeOnBackground()
     }
-    window.addEventListener(NATIVE_BACKGROUND_EVENT, closeOnBackground)
-    document.addEventListener('visibilitychange', closeOnHidden)
+    if (!isNative) {
+      window.addEventListener(NATIVE_BACKGROUND_EVENT, closeOnBackground)
+      document.addEventListener('visibilitychange', closeOnHidden)
+    }
     startCamera()
 
     return () => {
@@ -148,12 +135,12 @@ export default function ScanSheet({
         streamRef.current = null
       }
     }
-  }, [open, onScanned, t])
+  }, [open, t])
 
   if (!open) return null
 
   function pickMachine(type: DeviceType, _name: string) {
-    onScanned({ type, name: '' })
+    onScanned(type)
   }
 
   return (
@@ -197,7 +184,6 @@ export default function ScanSheet({
           </div>
         )}
 
-        {error && <p className="mt-3 text-[13px] text-danger">{error}</p>}
 
         {(cameraOk === false || picking) && (
           <div className="mt-4">

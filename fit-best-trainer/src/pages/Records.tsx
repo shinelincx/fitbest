@@ -1,4 +1,5 @@
-import { useState } from 'react'
+import { cadenceDisplay } from '../utils/cadence'
+import { useRef, useState } from 'react'
 import { useSearchParams } from 'react-router-dom'
 import { useTranslation } from 'react-i18next'
 import { ChevronDown, Flame, Heart, Share2, Trash2, TriangleAlert, Zap } from 'lucide-react'
@@ -41,6 +42,11 @@ function RecordsList({ owner: user, sessionExpired, filter, setFilter }: {
   const [shareSession, setShareSession] = useState<MachineSession | null>(null)
   const [shareStrength, setShareStrength] = useState<StrengthSession | null>(null)
   const [syncing, setSyncing] = useState(false)
+  const deleteDialog = useRef<HTMLDialogElement>(null)
+  const deleteTarget = useRef<{ id: string; kind: Item['kind'] } | null>(null)
+  const deletingRef = useRef(false)
+  const [deleting, setDeleting] = useState(false)
+  const [deleteError, setDeleteError] = useState<string | null>(null)
   const toast = useToast()
   const overview = useTrainingOverview(user?.id ?? null, sessionExpired)
   const { sessions, loading } = overview
@@ -51,14 +57,31 @@ function RecordsList({ owner: user, sessionExpired, filter, setFilter }: {
     return item.app === 'cardio' && item.machine === filter
   })
 
-  async function handleDelete(id: string, kind: Item['kind']) {
+  function requestDelete(id: string, kind: Item['kind']) {
+    const dialog = deleteDialog.current
+    if (!dialog || dialog.open || deletingRef.current) return
+    deleteTarget.current = { id, kind }
+    setDeleteError(null)
+    dialog.showModal()
+  }
+
+  async function confirmDelete() {
+    if (!deleteTarget.current || deletingRef.current) return
+    const { id, kind } = deleteTarget.current
+    deletingRef.current = true
+    setDeleting(true)
+    setDeleteError(null)
     try {
       if (kind === 'strength') await deleteStrengthSession(id, user?.id ?? null)
       else await deleteSession(id)
       overview.retry()
+      deleteDialog.current?.close()
       toast(t('记录已删除'))
     } catch (error) {
-      toast(t(error instanceof Error ? error.message : '删除失败，请重试'))
+      setDeleteError(t(error instanceof Error ? error.message : '删除失败，请重试'))
+    } finally {
+      deletingRef.current = false
+      setDeleting(false)
     }
   }
 
@@ -125,8 +148,8 @@ function RecordsList({ owner: user, sessionExpired, filter, setFilter }: {
         <div className="space-y-2 pb-2 hd:lg:grid hd:lg:grid-cols-2 hd:lg:items-start hd:lg:gap-3 hd:lg:space-y-0">
           {items.map((it) => {
             const open = expanded === it.id
-            if (it.app === 'strength') return renderStrength(it, open, setExpanded, setShareStrength, handleDelete, t)
-            if (it.app === 'cardio') return renderCardio(it, open, setExpanded, setShareSession, handleDelete, t)
+            if (it.app === 'strength') return renderStrength(it, open, setExpanded, setShareStrength, requestDelete, t)
+            if (it.app === 'cardio') return renderCardio(it, open, setExpanded, setShareSession, requestDelete, t)
             return (
               <div key={`${it.app}:${it.id}`} className="flex items-center justify-between gap-2 rounded-md border border-border bg-surface p-3">
                 <div>
@@ -155,6 +178,33 @@ function RecordsList({ owner: user, sessionExpired, filter, setFilter }: {
           avatar={user?.avatar}
         />
       )}
+
+      <dialog
+        ref={deleteDialog}
+        role="alertdialog"
+        aria-labelledby="delete-record-title"
+        aria-describedby="delete-record-description"
+        aria-busy={deleting}
+        onCancel={(event) => { if (deletingRef.current) event.preventDefault() }}
+        onClose={() => { deleteTarget.current = null }}
+        className="m-auto w-[calc(100%_-_2rem)] max-w-sm rounded-lg border border-border bg-surface p-5 text-text backdrop:bg-black/55"
+      >
+        <h2 id="delete-record-title" className="text-lg font-semibold">{t('删除这条记录')}</h2>
+        <p id="delete-record-description" className="mt-2 text-sm text-text-sub">
+          {t('删除后无法恢复，训练统计也会重新计算。')}
+        </p>
+        {deleteError && <p role="alert" className="mt-2 text-sm text-danger">{deleteError}</p>}
+        <div className="mt-5 grid grid-cols-2 gap-2">
+          <button type="button" autoFocus disabled={deleting} onClick={() => deleteDialog.current?.close()}
+            className="min-h-11 rounded-md border border-border px-3 text-sm font-medium disabled:opacity-50">
+            {t('取消')}
+          </button>
+          <button type="button" disabled={deleting} onClick={confirmDelete}
+            className="min-h-11 rounded-md bg-danger px-3 text-sm font-semibold text-white disabled:opacity-50">
+            {t(deleting ? '删除中…' : '确认删除')}
+          </button>
+        </div>
+      </dialog>
 
       {shareStrength && (
         <ShareSheet
@@ -232,7 +282,7 @@ function renderCardio(
               { icon: Flame, label: '消耗', value: `${s.calories} kcal` },
               { icon: Heart, label: '平均心率', value: s.avgHr ? `${s.avgHr} bpm` : '—' },
               { label: '平均速度', value: s.avgSpeed ? `${s.avgSpeed} km/h` : '—' },
-              { label: '桨频/转速', value: s.cadence ? `${s.cadence}` : '—' },
+              { label: '平均{{label}}', cadenceLabel: t(cadenceDisplay(s.machine).label), value: s.cadence ? `${s.cadence} ${cadenceDisplay(s.machine).unit}` : '—' },
               { label: '总用时', value: formatTime(s.durationSec) },
             ].map((it) => {
               const ItIcon = 'icon' in it ? it.icon : null
@@ -240,7 +290,7 @@ function renderCardio(
                 <div key={it.label} className="rounded-sm bg-surface-2 px-2 py-2">
                   {ItIcon && <ItIcon size={11} className="text-text-sub" />}
                   <p className={`font-mono text-xs font-semibold ${ItIcon ? 'mt-1' : ''}`}>{it.value}</p>
-                  <p className="text-[11px] text-text-sub">{t(it.label)}</p>
+                  <p className="text-[11px] text-text-sub">{t(it.label, { label: it.cadenceLabel })}</p>
                 </div>
               )
             })}

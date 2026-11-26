@@ -1,26 +1,25 @@
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { Link, useNavigate } from 'react-router-dom'
 import {
   ArrowRight,
   ArrowUpRight,
-  Bluetooth,
   ChevronRight,
   Dumbbell,
-  Loader2,
   ScanLine,
 } from 'lucide-react'
 import { useTrainingOverview } from '../hooks/useTrainingOverview'
 import { MACHINES, EXTERNAL_APPS } from '../mock/data'
 import { PIN_MACHINES } from '../mock/pinMachines'
 import { formatVolume, weekVolume } from '../utils/strength'
-import { useDevices, type DeviceType } from '../context/DeviceContext'
+import { useDevices } from '../context/DeviceContext'
 import { useAuth } from '../context/AuthContext'
 import Avatar from '../components/Avatar'
-import ScanSheet, { type ScanResult } from '../components/ScanSheet'
+import ScanSheet from '../components/ScanSheet'
+import { parseEquipmentLabel } from '../ble/equipmentLabel'
 import { useToast } from '../components/Toast'
 import { WeekBars } from '../components/Charts'
-import { formatDate, formatDistance, startOfWeek } from '../utils/stats'
+import { formatDate, startOfWeek } from '../utils/stats'
 import { getPrefs } from '../utils/prefs'
 import { isNative, openExternal } from '../platform/runtime'
 
@@ -58,35 +57,29 @@ function GoalLine({ label, current, target, unit }: { label: string; current: nu
 export default function Home() {
   const { t } = useTranslation()
   const [scanOpen, setScanOpen] = useState(false)
-  const [pendingType, setPendingType] = useState<DeviceType | null>(null)
-  const [pendingName, setPendingName] = useState('')
-  const { devices, connectDevice } = useDevices()
+  const { devices, connectDevice, machineNavigation } = useDevices()
   const { user, sessionExpired } = useAuth()
   const overview = useTrainingOverview(user?.id ?? null, sessionExpired)
   const toast = useToast()
   const navigate = useNavigate()
 
-  // 监听扫码连接的器械状态，连接成功后跳转到训练准备界面
-  useEffect(() => {
-    if (!pendingType) return
-    const d = devices[pendingType]
-    if (d.connected) {
-      setPendingType(null)
-      setPendingName('')
-      navigate(`/train/${pendingType}`)
-    } else if (d.status === 'failed') {
-      toast(t('连接失败，请重试'))
-      setPendingType(null)
-      setPendingName('')
-    }
-  }, [devices, pendingType, navigate, t, toast])
-
-  const handleScanned = useCallback(({ type, name }: ScanResult) => {
+  const handleScanned = useCallback(async (raw: string) => {
     setScanOpen(false)
-    setPendingType(type)
-    setPendingName(name)
-    connectDevice(type, undefined, name)
-  }, [connectDevice, t, toast])
+    const hit = parseEquipmentLabel(raw, machineNavigation)
+    if (!hit) {
+      toast(t('无法识别的器械标签'))
+      return
+    }
+    const device = devices[hit.type]
+    const alreadyConnected = device.connected && (!hit.name || device.name?.toLowerCase() === hit.name.toLowerCase())
+    try {
+      if (alreadyConnected || await connectDevice(hit.type, undefined, hit.name || undefined, Boolean(hit.name))) {
+        navigate(`/train/${hit.type}`)
+      }
+    } catch {
+      toast(t('连接失败，请重试'))
+    }
+  }, [connectDevice, devices, machineNavigation, navigate, t, toast])
 
   const { week, weekly, dayCounts, todayIndex, time: now, loading } = overview
   const recent = overview.all.slice(0, 3)
@@ -334,7 +327,7 @@ export default function Home() {
                     })}
                   </p>
                 </div>
-                {s.distanceM > 0 && <p className="font-mono text-sm font-bold tabular-nums">{formatDistance(s.distanceM)}</p>}
+                {s.distanceM > 0 && <p className="font-mono text-sm font-bold tabular-nums">{(s.distanceM / 1000).toFixed(2)} km</p>}
               </Link>
             ))}
           </div>
@@ -342,22 +335,6 @@ export default function Home() {
       </section>
         </div>
       </div>
-
-      {pendingType && (
-        <div className="fixed inset-0 z-[75] flex items-center justify-center bg-black/55">
-          <div className="flex w-64 flex-col items-center rounded-2xl bg-bg px-6 py-8">
-            <div className="relative flex h-14 w-14 items-center justify-center">
-              <Loader2 size={40} className="animate-spin text-primary" />
-              <Bluetooth size={20} className="absolute text-primary" />
-            </div>
-            <p className="mt-4 text-[15px] font-semibold">{t('正在连接')}</p>
-            <p className="mt-1 font-mono text-[16px] font-bold tracking-wide text-text">
-              {pendingName || t('设备')}
-            </p>
-            <p className="mt-1 text-[12px] text-text-sub">{t('蓝牙连接中，请稍候…')}</p>
-          </div>
-        </div>
-      )}
 
       <ScanSheet
         open={scanOpen}

@@ -1,7 +1,8 @@
+import { cadenceDisplay } from '../utils/cadence'
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
 import { useTranslation } from 'react-i18next'
-import { useLocation, useNavigate, useParams } from 'react-router-dom'
+import { Link, useLocation, useNavigate, useParams } from 'react-router-dom'
 import {
   ArrowLeft,
   Bluetooth,
@@ -51,25 +52,26 @@ const MODES: TrainMode[] = ['free', 'interval', 'distance', 'time']
 /** 主指标显示速度（km/h）的器械；其余显示功率（W） */
 const SPEED_MACHINES: MachineType[] = ['treadmill', 'bike', 'spin', 'upright']
 
-/** 踏频单位为 rpm 的器械；其余为 spm */
-const RPM_MACHINES: MachineType[] = ['bike', 'spin', 'upright']
-
-const CADENCE_LABEL: Record<MachineType, string> = {
-  treadmill: '步频',
-  rower: '桨频',
-  ski: '频率',
-  bike: '踏频',
-  spin: '踏频',
-  elliptical: '步频',
-  upright: '踏频',
-  stair: '步频',
-}
-
 const INTERVAL_PRESETS: IntervalConfig[] = [
   { work: 30, rest: 30, rounds: 8 },
   { work: 45, rest: 15, rounds: 8 },
   { work: 60, rest: 60, rounds: 6 },
 ]
+
+function comparableWorkouts(
+  history: MachineSession[],
+  workout: Pick<MachineSession, 'machine' | 'mode' | 'target'> & { id?: string },
+) {
+  if (workout.mode === 'free') return []
+  // 旧记录只保存间歇组数。组数相同但训练和休息设置不同的方案不能区分。
+  if (workout.mode === 'interval' && INTERVAL_PRESETS.filter(({ rounds }) => rounds === workout.target).length !== 1) return []
+  if (!(workout.target && workout.target > 0)) return []
+  return history
+    .filter((session) => session.completed === true && session.id !== workout.id &&
+      session.machine === workout.machine && session.mode === workout.mode &&
+      session.target === workout.target && session.durationSec > 0)
+    .sort((a, b) => Date.parse(b.date) - Date.parse(a.date))
+}
 
 function hrZone(bpm: number) {
   if (!bpm) return { label: '未连接', color: 'text-text-sub', idx: -1, pct: 0 }
@@ -130,6 +132,7 @@ export default function MachineTrain() {
   })
 
   const accRef = useRef({ speed: 0, speedN: 0, cadence: 0, cadenceN: 0, power: 0, powerN: 0, hr: 0, hrN: 0 })
+  const sampleRef = useRef<Pick<DeviceMetrics, 'speed' | 'cadence' | 'power'> & { hr: number }>({ hr: 0 })
   const autoRef = useRef(false)
   const workoutRef = useRef<{ id: string; startedAt: string; owner: ReturnType<typeof getMachineSessionOwner> } | null>(null)
   const resultRef = useRef<MachineSession | null>(null)
@@ -250,25 +253,52 @@ export default function MachineTrain() {
 
   const elapsed = running || paused ? metrics.elapsedTime ?? (machineType === 'treadmill' ? 0 : localElapsed) : 0
   const distance = running || paused ? metrics.distance ?? 0 : 0
+  const hasMinimumMovement = distance >= 50 ||
+    ((machineType === 'rower' || machineType === 'ski') && (metrics.strokeCount ?? 0) >= 10) ||
+    (machineType === 'stair' &&
+      ((metrics.strokeCount ?? metrics.strideCount ?? 0) >= 10 || (metrics.elevationGain ?? 0) >= 3 || (metrics.floors ?? 0) >= 1))
+  const canSaveWorkout = Boolean(resultRef.current) || (elapsed >= 10 && hasMinimumMovement)
   const speed = metrics.speed ?? 0
-  const cadence = metrics.cadence ?? 0
-  const power = metrics.power ?? 0
   const calories = metrics.calories ?? 0
-  const extraReadouts: [string, string | number | undefined, string?][] = machineType === 'treadmill' ? [
-    ['消耗', Math.round(calories), 'kcal'],
-    ['步频', cadence ? Math.round(cadence) : '--', 'spm'],
-    ['器械步数', metrics.strokeCount || '--'],
+  type Readout = [label: string, value: string | number | undefined, unit?: string]
+  const isStrokeMachine = machineType === 'rower' || machineType === 'ski'
+  const isStair = machineType === 'stair'
+  const isElliptical = machineType === 'elliptical'
+  const showsSpeed = SPEED_MACHINES.includes(machineType) || isElliptical
+  const speedReadout: Readout = ['速度', metrics.speed, 'km/h']
+  const powerReadout: Readout = ['功率', metrics.power?.toFixed(0), 'W']
+  const paceReadout: Readout = [
+    '配速',
+    formatTreadmillPace(isStrokeMachine ? metrics.pace ?? 1800 / speed : 3600 / speed),
+    isStrokeMachine ? 'min/500m' : 'min/km',
+  ]
+  const { label: cadenceLabel, unit: cadenceUnit } = cadenceDisplay(machineType)
+  const cadenceReadout: Readout = [cadenceLabel, metrics.cadence?.toFixed(0), cadenceUnit]
+  const caloriesReadout: Readout = ['消耗', metrics.calories?.toFixed(0), 'kcal']
+  const distanceReadout: Readout = ['距离', metrics.distance === undefined ? undefined : (distance / 1000).toFixed(2), 'km']
+  const stepsReadout: Readout = ['器械步数', metrics.strokeCount ?? metrics.strideCount]
+  const basicReadouts: Readout[] = machineType === 'treadmill' ? [
+    speedReadout, distanceReadout, paceReadout, ['坡度', metrics.incline, '%'],
   ] : [
-    ['速度', SPEED_MACHINES.includes(machineType) ? undefined : metrics.speed, 'km/h'],
-    ['配速', metrics.pace === undefined ? undefined : formatTreadmillPace(metrics.pace), '/500 m'],
-    ['累计次数', metrics.strokeCount],
-    ['累计步幅', metrics.strideCount],
-    ['楼层', metrics.floors],
-    ['累计爬升', metrics.elevationGain, 'm'],
-    ['坡度', metrics.incline, '%'],
+    isStair ? stepsReadout : showsSpeed ? speedReadout : powerReadout,
+    cadenceReadout, distanceReadout, caloriesReadout,
+  ]
+  const extraReadouts: Readout[] = machineType === 'treadmill' ? [
+    caloriesReadout, cadenceReadout, stepsReadout,
+  ] : [
+    ...(showsSpeed ? [powerReadout] : [speedReadout]),
+    ...(isStair && metrics.power !== undefined ? [powerReadout] : []),
+    ...(!isStair ? [paceReadout] : []),
+    ...(!isStair && (isStrokeMachine || metrics.strokeCount !== undefined)
+      ? [['累计次数', metrics.strokeCount] satisfies Readout] : []),
+    ...(isElliptical ? [
+      ['累计步幅', metrics.strideCount],
+      ['坡度', metrics.incline, '%'],
+    ] satisfies Readout[] : []),
+    ...(isStair ? [['楼层', metrics.floors] satisfies Readout] : []),
+    ...(isStair || isElliptical ? [['累计爬升', metrics.elevationGain, 'm'] satisfies Readout] : []),
     ['阻力', metrics.resistance],
   ]
-  const visibleReadouts = extraReadouts.filter(([, value]) => value !== undefined)
 
   useEffect(() => {
     if (!running || paused || pausedTreadmill || machineType === 'treadmill') return
@@ -316,29 +346,25 @@ export default function MachineTrain() {
   const interval = intervalProgress(elapsed, intervalCfg)
   const { target: targetValue, progress, reached } = trainingGoal(mode, elapsed, distance, timeTarget, distanceTarget, interval.total)
 
-  // 采样平均指标
   useEffect(() => {
-    if (!running || paused || pausedTreadmill) return
-    const a = accRef.current
-    if (speed > 0) {
-      a.speed += speed
-      a.speedN += 1
-    }
-    if (cadence > 0) {
-      a.cadence += cadence
-      a.cadenceN += 1
-    }
-    if (power > 0) {
-      a.power += power
-      a.powerN += 1
-    }
-  }, [speed, cadence, power, running, paused, pausedTreadmill])
+    sampleRef.current = { speed: metrics.speed, cadence: metrics.cadence, power: metrics.power, hr }
+  }, [metrics.speed, metrics.cadence, metrics.power, hr])
 
+  // 等间隔采样，持续不变的读数和实际收到的零值也参与平均。
   useEffect(() => {
-    if (!running || paused || pausedTreadmill || hr <= 0) return
-    accRef.current.hr += hr
-    accRef.current.hrN += 1
-  }, [hr, running, paused, pausedTreadmill])
+    if (!device?.connected || !running || paused || pausedTreadmill || startBaselinePending || showingCountdown) return
+    const timer = window.setInterval(() => {
+      const sample = sampleRef.current
+      const totals = accRef.current
+      for (const key of ['speed', 'cadence', 'power', 'hr'] as const) {
+        const value = sample[key]
+        if (value === undefined || !Number.isFinite(value) || value < 0 || (key === 'hr' && value === 0)) continue
+        totals[key] += value
+        totals[`${key}N`] += 1
+      }
+    }, 1000)
+    return () => window.clearInterval(timer)
+  }, [device?.connected, running, paused, pausedTreadmill, startBaselinePending, showingCountdown])
 
   const adjustTreadmill = async (field: 'speed' | 'incline' | 'resistance', value: number) => {
     if (!running || paused || pausedTreadmill || pendingTarget || !connected || controlPending.current || finishingRef.current ||
@@ -428,6 +454,14 @@ export default function MachineTrain() {
       } catch {
         toast(t('未能确认器械停止，请使用器械面板停止'))
       }
+      if (!canSaveWorkout) {
+        workoutRef.current = null
+        setConfirmOpen(false)
+        finishingRef.current = false
+        setSaving(false)
+        toast(t('未达到最低记录条件，本次训练未保存'))
+        return
+      }
       const avg = (sum: number, n: number) => (n > 0 ? Math.round((sum / n) * 10) / 10 : 0)
       const record: MachineSession = resultRef.current ?? {
         id: workout.id,
@@ -437,7 +471,7 @@ export default function MachineTrain() {
         mode,
         durationSec: elapsed,
         distanceM: Math.round(distance),
-        avgSpeed: avg(a.speed, a.speedN),
+        avgSpeed: distance > 0 && elapsed > 0 ? avg(distance * 3.6, elapsed) : avg(a.speed, a.speedN),
         cadence: Math.round(avg(a.cadence, a.cadenceN)),
         power: Math.round(avg(a.power, a.powerN)),
         calories: Math.round(calories),
@@ -471,7 +505,7 @@ export default function MachineTrain() {
         setSaving(false)
       }
     },
-    [machineType, stopDevice, elapsed, distance, mode, distanceTarget, timeTarget, intervalCfg.rounds, calories, reached, t, toast],
+    [machineType, stopDevice, elapsed, distance, mode, distanceTarget, timeTarget, intervalCfg.rounds, calories, reached, canSaveWorkout, t, toast],
   )
 
   // 目标达成自动结束
@@ -516,25 +550,29 @@ export default function MachineTrain() {
       : t('未连接器械')
 
   if (finished) {
-    const past = history
-      .filter((s) => s.machine === finished.machine && s.id !== finished.id)
-      .sort((a, b) => +new Date(b.date) - +new Date(a.date))
+    const past = finished.completed ? comparableWorkouts(history, finished) : []
     const prev = past[0]
     const bestTime = past.length ? Math.min(...past.map((s) => s.durationSec)) : 0
     const delta = prev ? prev.durationSec - finished.durationSec : 0
     const statItems = [
-      { label: t('总用时'), value: formatTime(finished.durationSec) },
-      { label: t('距离'), value: `${(finished.distanceM / 1000).toFixed(2)} km` },
+      { label: t('平均功率'), value: finished.power ? `${finished.power} W` : '—' },
+      finished.mode === 'distance'
+        ? { label: t('总用时'), value: formatTime(finished.durationSec) }
+        : { label: t('距离'), value: `${(finished.distanceM / 1000).toFixed(2)} km` },
       { label: t('消耗'), value: `${finished.calories} kcal` },
       { label: t('平均心率'), value: finished.avgHr ? `${finished.avgHr} bpm` : '—' },
       { label: t('平均速度'), value: finished.avgSpeed ? `${finished.avgSpeed} km/h` : '—' },
-      { label: t('平均{{label}}', { label: t(CADENCE_LABEL[machineType]) }), value: finished.cadence ? `${finished.cadence}` : '—' },
+      { label: t('平均{{label}}', { label: t(cadenceLabel) }), value: finished.cadence ? `${finished.cadence} ${cadenceUnit}` : '—' },
       ...(machineType === 'treadmill' ? [{ label: t('平均配速'), value: finished.distanceM > 0 && finished.durationSec > 0
         ? `${formatTreadmillPace(finished.durationSec * 1000 / finished.distanceM)} /km` : '—' }] : []),
     ]
 
     return (
       <div className="px-5 pt-5 pb-6 hd:lg:mx-auto hd:lg:max-w-[820px] hd:lg:px-8 hd:lg:pt-8">
+        <Link to="/machines" replace className="mb-3 inline-flex min-h-11 items-center gap-2 rounded-md px-2 text-sm font-medium text-text-sub">
+          <ArrowLeft size={18} aria-hidden="true" />
+          {t('返回器械列表')}
+        </Link>
         <div className="sheet-up rounded-lg border border-border bg-surface p-6 text-center">
           <div className="mx-auto mb-4 flex h-16 w-16 items-center justify-center rounded-full bg-text/5 text-text">
             <CheckCircle2 size={36} />
@@ -567,7 +605,7 @@ export default function MachineTrain() {
             ))}
           </div>
 
-          {(prev || bestTime) && (
+          {prev && (
             <p className="mt-4 text-[16px] text-text-sub">
               {prev
                 ? delta > 0
@@ -606,9 +644,6 @@ export default function MachineTrain() {
               {t('查看记录')}
             </button>
           </div>
-          <button onClick={() => navigate('/machines')} className="mt-4 w-full text-[16px] text-text-sub underline">
-            {t('返回器械列表')}
-          </button>
         </div>
 
         <ShareSheet
@@ -624,10 +659,16 @@ export default function MachineTrain() {
     )
   }
 
-  const machinePast = history
-    .filter((s) => s.machine === machineType)
-    .sort((a, b) => +new Date(b.date) - +new Date(a.date))
-  const lastRun = machinePast[0]
+  const machinePast = comparableWorkouts(history, {
+    machine: machineType,
+    mode,
+    target: mode === 'distance' ? distanceTarget : mode === 'time' ? timeTarget
+      : mode === 'interval' ? intervalCfg.rounds : undefined,
+  })
+  const lastRun = mode === 'free'
+    ? history.filter((session) => session.machine === machineType && session.mode === 'free' && session.completed)
+      .sort((a, b) => Date.parse(b.date) - Date.parse(a.date))[0]
+    : machinePast[0]
   const bestRunTime = machinePast.length ? Math.min(...machinePast.map((s) => s.durationSec)) : 0
 
   return (
@@ -808,54 +849,23 @@ export default function MachineTrain() {
 
                 {/* 实时指标 */}
                 <div className="grid grid-cols-2 overflow-hidden rounded-lg border border-border bg-surface">
-                  {[
-                    {
-                      label: SPEED_MACHINES.includes(machineType) ? '速度' : '功率',
-                      value: SPEED_MACHINES.includes(machineType) ? (metrics.speed?.toString() ?? '—') :
-                        metrics.power === undefined ? '—' : `${Math.round(power)}`,
-                      unit: SPEED_MACHINES.includes(machineType) ? 'km/h' : 'W',
-                      color: '',
-                    },
-                    ...(machineType !== 'treadmill' ? [{
-                      label: '消耗',
-                      value: `${Math.round(calories)}`,
-                      unit: 'kcal',
-                      color: '',
-                    },
-                    {
-                      label: CADENCE_LABEL[machineType],
-                      value: cadence ? `${Math.round(cadence)}` : '—',
-                      unit: RPM_MACHINES.includes(machineType) ? 'rpm' : 'spm',
-                      color: '',
-                    }] : []),
-                    {
-                      label: '距离',
-                      value: metrics.distance === undefined && machineType !== 'treadmill' ? '—' : `${(distance / 1000).toFixed(2)}`,
-                      unit: 'km',
-                      color: '',
-                    },
-                    ...(machineType === 'treadmill' ? [
-                      { label: '配速', value: formatTreadmillPace(3600 / speed), unit: 'min/km', color: '' },
-                      { label: '坡度', value: metrics.incline?.toString() ?? '—', unit: '%', color: '' },
-                    ] : []),
-                    ...(showMoreData ? visibleReadouts.map(([label, value, unit]) => ({ label, value, unit, color: '' })) : []),
-                  ].map((it, i, items) => (
+                  {basicReadouts.concat(showMoreData ? extraReadouts : []).map(([label, value, unit], i, items) => (
                     <div
-                      key={it.label}
+                      key={label}
                       className={`px-4 py-3.5 ${i >= 2 ? 'border-t border-border' : ''} ${
                         i % 2 === 0 ? (i === items.length - 1 ? 'col-span-2' : 'border-r border-border') : ''
                       }`}
                     >
-                      <p className="text-[15px] text-text-sub">{t(it.label)}</p>
+                      <p className="text-[15px] text-text-sub">{t(label)}</p>
                       <div className="mt-1 flex items-baseline gap-1">
-                        <p className={`font-mono text-[28px] font-bold leading-none tabular-nums hd:lg:text-[34px] ${it.color}`}>
-                          {it.value}
+                        <p className={`font-mono text-[28px] font-bold leading-none tabular-nums hd:lg:text-[34px]`}>
+                          {value ?? '--'}
                         </p>
-                        {it.unit && <span className="text-[15px] text-text-sub">{it.unit}</span>}
+                        {unit && <span className="text-[15px] text-text-sub">{unit}</span>}
                       </div>
                     </div>
                   ))}
-                  {visibleReadouts.length > 0 && <button type="button" aria-expanded={showMoreData} onClick={() => setShowMoreData((expanded) => !expanded)}
+                  {extraReadouts.length > 0 && <button type="button" aria-expanded={showMoreData} onClick={() => setShowMoreData((expanded) => !expanded)}
                     className="col-span-2 flex min-h-11 items-center justify-center gap-2 border-t border-border px-4 py-2 text-sm font-semibold text-text-sub">
                     {showMoreData ? t('收起') : t('更多数据')}
                     <span aria-hidden="true" className={`size-0 border-x-[5px] border-t-[6px] border-x-transparent border-t-current ${showMoreData ? 'rotate-180' : ''}`} />
@@ -1136,16 +1146,28 @@ export default function MachineTrain() {
       {confirmOpen && (
         <div className="fixed inset-0 z-[70] flex items-end justify-center bg-black/60 px-5 pb-8">
           <div className="sheet-up w-full max-w-[400px] rounded-lg border border-border bg-surface p-5">
-            <p className="font-display text-lg font-bold">{t('结束本次训练？')}</p>
+            <p className="font-display text-lg font-bold">{t(canSaveWorkout ? '结束本次训练？' : '结束且不保存？')}</p>
             <p className="mt-1 text-sm text-text-sub">
-              {t('当前用时 {{time}} · 距离 {{distance}} km，结束后将保存记录。', {
+              {t(canSaveWorkout
+                ? '当前用时 {{time}} · 距离 {{distance}} km，结束后将保存记录。'
+                : '当前用时 {{time}} · 距离 {{distance}} 米。本次训练未达到最低记录条件，结束后不会保存或计入统计。', {
                 time: formatTime(elapsed),
-                distance: (distance / 1000).toFixed(2),
+                distance: canSaveWorkout ? (distance / 1000).toFixed(2) : Math.floor(distance),
               })}
             </p>
+            {!canSaveWorkout && !saving && (
+              <p className="mt-2 text-sm text-text-sub">
+                {t(machineType === 'stair'
+                  ? '至少训练 10 秒，并达到 50 米、10 步、爬升 3 米或 1 层中的任一项。'
+                  : machineType === 'rower' || machineType === 'ski'
+                    ? '至少训练 10 秒，并达到 50 米或累计 10 次。'
+                    : '至少训练 10 秒，并达到 50 米。')}
+              </p>
+            )}
             <div className="mt-4 flex gap-2">
               <button
                 onClick={() => setConfirmOpen(false)}
+                disabled={saving}
                 className="flex-1 rounded-md border border-border py-3 text-[17px]"
               >
                 {t('继续训练')}
@@ -1155,7 +1177,7 @@ export default function MachineTrain() {
                 disabled={saving}
                 className="flex-1 rounded-md bg-text py-3 text-[17px] font-semibold text-bg disabled:opacity-60"
               >
-                {saving ? t('保存中…') : t('结束并保存')}
+                {saving ? t('正在结束…') : t(canSaveWorkout ? '结束并保存' : '结束且不保存')}
               </button>
             </div>
           </div>

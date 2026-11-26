@@ -17,8 +17,13 @@ function abortError(): DOMException {
 
 function decodeNativeText(record: NdefRecord): string | null {
   const type = new TextDecoder().decode(new Uint8Array(record.type))
-  if (type !== 'T' || record.payload.length === 0) return null
+  if (record.payload.length === 0) return null
   const payload = new Uint8Array(record.payload)
+  if (type === 'U') {
+    const prefix = ['', 'http://www.', 'https://www.', 'http://', 'https://'][payload[0]]
+    return prefix === undefined ? null : prefix + new TextDecoder().decode(payload.subarray(1))
+  }
+  if (type !== 'T') return null
   const status = payload[0]
   const languageLength = status & 0x3f
   const start = 1 + languageLength
@@ -116,7 +121,7 @@ async function readWebText(signal: AbortSignal): Promise<string> {
       else reject(new Error('无法识别的器械标签'))
     }
     const onReading = (event: WebNdefReadingEvent) => {
-      const record = event.message?.records?.find((item) => item.recordType === 'text')
+      const record = event.message?.records?.find((item) => item.recordType === 'text' || item.recordType === 'url' || item.recordType === 'absolute-url')
       if (!record?.data) {
         finish(undefined)
         return

@@ -1,4 +1,5 @@
 import { createContext, useCallback, useContext, useRef, useState, type ReactNode } from 'react'
+import { createPortal } from 'react-dom'
 
 const ToastContext = createContext<(message: string, duration?: number) => void>(() => {})
 
@@ -19,9 +20,12 @@ export function ToastProvider({ children }: { children: ReactNode }) {
   return (
     <ToastContext.Provider value={show}>
       {children}
-      <div role="status" className="fixed bottom-28 left-1/2 z-[80] w-max max-w-[calc(100%-2rem)] -translate-x-1/2">
-        {message && <div className="toast-pop rounded-full border border-border bg-text px-4 py-2 text-sm text-bg shadow-card">{message}</div>}
-      </div>
+      {typeof document !== 'undefined' && createPortal(
+        <div role="status" className="pointer-events-none fixed inset-x-0 bottom-28 z-[80] flex justify-center px-4">
+          {message && <div className="toast-pop max-w-full break-words rounded-xl border border-border bg-text px-4 py-2 text-center text-sm text-bg shadow-card">{message}</div>}
+        </div>,
+        document.body,
+      )}
     </ToastContext.Provider>
   )
 }

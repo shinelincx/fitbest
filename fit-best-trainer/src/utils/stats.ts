@@ -21,6 +21,7 @@ export function formatDistance(m: number): string {
 }
 
 export function formatDuration(sec: number): string {
+  if (sec < 60) return i18n.t('{{count}} 秒', { count: Math.max(0, Math.floor(sec)) })
   const h = Math.floor(sec / 3600)
   const m = Math.floor((sec % 3600) / 60)
   if (h > 0) return `${h}h${m.toString().padStart(2, '0')}m`

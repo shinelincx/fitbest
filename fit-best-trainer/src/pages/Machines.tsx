@@ -4,39 +4,18 @@ import { Link, useNavigate } from 'react-router-dom'
 import { Bluetooth, Heart } from 'lucide-react'
 import { AirBikeIcon, EllipticalIcon, RowerIcon, SkiIcon, SpinIcon, StairIcon, TreadmillIcon, UprightIcon } from '../components/MachineIcons'
 import { fetchSessions } from '../api'
-import type { MachineSession } from '../types'
+import type { MachineSession, MachineType } from '../types'
 import { MACHINES } from '../mock/data'
-import { useDevices, type DeviceType } from '../context/DeviceContext'
+import { useDevices } from '../context/DeviceContext'
 import { useToast } from '../components/Toast'
 import { MiniRing } from '../components/Charts'
 import DevicePanel from '../components/DevicePanel'
 import ConsolePanel from '../components/ConsolePanel'
 import QuickConnect from '../components/QuickConnect'
-import { formatDistance, isThisWeek } from '../utils/stats'
+import { isThisWeek } from '../utils/stats'
+import { parseEquipmentLabel } from '../ble/equipmentLabel'
 import { readTextOnce } from '../platform/nfc'
 import { isCancellation } from '../platform/runtime'
-
-const NFC_MODELS: Record<string, string> = {
-  treadmill: 'Treadmill A1',
-  rower: 'Rower X2',
-  ski: 'SkiErg Pro',
-  bike: 'AirBike S3',
-  spin: 'SpinBike S5',
-  elliptical: 'Elliptical E7',
-  upright: 'UprightBike U3',
-  stair: 'StairClimber C9',
-}
-
-/** 标签内容为器械型号或类型关键字，如 "Treadmill A1" / "spin" */
-function detectNfcMachine(text: string): { type: DeviceType; name: string } | null {
-  const lower = text.toLowerCase()
-  for (const [type, model] of Object.entries(NFC_MODELS)) {
-    if (lower === model.toLowerCase() || lower.includes(type)) {
-      return { type: type as DeviceType, name: model }
-    }
-  }
-  return null
-}
 
 const MACHINE_ICON = {
   treadmill: TreadmillIcon,
@@ -49,6 +28,14 @@ const MACHINE_ICON = {
   stair: StairIcon,
 }
 
+// NewAiFitbest 运动页的固定顺序，滑雪机在导航加载后追加。
+const LEGACY_MACHINE_ORDER: MachineType[] = ['treadmill', 'spin', 'rower', 'elliptical', 'stair', 'ski']
+
+function machineOrder(type: MachineType) {
+  const index = LEGACY_MACHINE_ORDER.indexOf(type)
+  return index < 0 ? LEGACY_MACHINE_ORDER.length : index
+}
+
 export default function Machines() {
   const { t, i18n } = useTranslation()
   const [sessions, setSessions] = useState<MachineSession[]>([])
@@ -56,14 +43,15 @@ export default function Machines() {
   const [nfcReading, setNfcReading] = useState(false)
   const nfcAttempt = useRef<AbortController | null>(null)
   const { devices, connectDevice, machineNavigation } = useDevices()
-  const navigationItems = machineNavigation
+  const navigationItems = (machineNavigation
     ? machineNavigation.machineTypes.flatMap(({ code, names }) => {
       const machine = MACHINES.find((item) => item.type === code)
       if (!machine) return []
       const language = i18n.resolvedLanguage ?? i18n.language
       return [{ ...machine, name: names[language] || names[language.split('-')[0]] || names['zh-CN'] || machine.name }]
     })
-    : MACHINES
+    : MACHINES.slice()
+  ).sort((a, b) => machineOrder(a.type) - machineOrder(b.type))
   const navigate = useNavigate()
   const toast = useToast()
 
@@ -82,13 +70,15 @@ export default function Machines() {
       const text = await readTextOnce(attempt.signal)
       window.clearTimeout(timeout)
       if (attempt.signal.aborted) return
-      const hit = detectNfcMachine(text)
+      const hit = parseEquipmentLabel(text, machineNavigation)
       if (!hit) {
         toast(t('无法识别的器械标签'))
         return
       }
       setNfcReading(false)
-      const connected = devices[hit.type].connected || await connectDevice(hit.type)
+      const device = devices[hit.type]
+      const alreadyConnected = device.connected && (!hit.name || device.name?.toLowerCase() === hit.name.toLowerCase())
+      const connected = alreadyConnected || await connectDevice(hit.type, undefined, hit.name || undefined, Boolean(hit.name))
       if (!attempt.signal.aborted && connected) navigate(`/train/${hit.type}`)
     } catch (error) {
       if (isCancellation(error)) return
@@ -99,7 +89,7 @@ export default function Machines() {
       nfcAttempt.current = null
       setNfcReading(false)
     }
-  }, [connectDevice, devices, navigate, t, toast])
+  }, [connectDevice, devices, machineNavigation, navigate, t, toast])
 
   useEffect(() => {
     fetchSessions().then((s) => {
@@ -157,7 +147,7 @@ export default function Machines() {
                       <p className="text-sm font-medium">{t(m.name)}</p>
                       <p className="mt-0.5 truncate text-[13px] text-text-sub">
                         {list.length
-                          ? t('本周 {{count}} 次 · {{distance}}', { count: list.length, distance: formatDistance(distance) })
+                          ? t('本周 {{count}} 次 · {{distance}}', { count: list.length, distance: `${(distance / 1000).toFixed(2)} km` })
                           : t(m.tagline)}
                       </p>
                     </div>

@@ -150,7 +150,21 @@ export class NativeBleAdapter implements BleAdapter {
 
   async connect(device: BleDeviceRef, onDisconnect: () => void): Promise<BleConnection> {
     await ensureReady()
-    await BleClient.connect(device.id, () => onDisconnect())
+    const connect = async () => {
+      let connected = false
+      await BleClient.connect(device.id, () => {
+        if (connected) onDisconnect()
+      })
+      connected = true
+    }
+    try {
+      await connect()
+    } catch (error) {
+      if (Capacitor.getPlatform() !== 'android' || !/\bstatus 133\b/.test(String(error))) throw error
+      // The Android plugin closes the failed GATT client before rejecting.
+      await new Promise<void>((resolve) => setTimeout(resolve, 750))
+      await connect()
+    }
     try {
       return new NativeBleConnection(device, await BleClient.getServices(device.id))
     } catch (error) {

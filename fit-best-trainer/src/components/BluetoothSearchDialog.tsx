@@ -7,6 +7,8 @@ import type { BleDeviceRef } from '../platform/ble'
 const SEARCH_HINT_DELAY_MS = 30_000
 
 export interface BluetoothSearchRequest {
+  allowUnfiltered?: boolean
+  autoSelect?: boolean
   matches: (device: BleDeviceRef, services: string[]) => boolean
   finish: (device: BleDeviceRef | null, error?: unknown) => void
 }
@@ -16,6 +18,8 @@ export default function BluetoothSearchDialog({ request }: { request: BluetoothS
   const dialog = useRef<HTMLDialogElement>(null)
   const [devices, setDevices] = useState<BleDeviceRef[]>([])
   const [showRetry, setShowRetry] = useState(false)
+  const [showAll, setShowAll] = useState(false)
+  const showAllRef = useRef(false)
   const finish = useRef<(device: BleDeviceRef | null) => void>(() => undefined)
   const retry = useRef<() => void>(() => undefined)
 
@@ -37,7 +41,11 @@ export default function BluetoothSearchDialog({ request }: { request: BluetoothS
     function beginScan() {
       const currentRound = ++round
       scan = scanNearbyDevices((device, services) => {
-        if (finished || currentRound !== round || !request.matches(device, services)) return
+        if (finished || currentRound !== round || (!showAllRef.current && !request.matches(device, services))) return
+        if (request.autoSelect) {
+          void complete(device)
+          return
+        }
         setDevices((previous) => previous.some((item) => item.id === device.id) ? previous : [...previous, device])
       })
       void scan.then(() => {
@@ -107,6 +115,17 @@ export default function BluetoothSearchDialog({ request }: { request: BluetoothS
       <div role="status" className="mb-3 flex shrink-0 items-center justify-center gap-2 rounded-xl bg-surface py-3 text-sm text-text-sub">
         <LoaderCircle size={16} className="animate-spin text-primary motion-reduce:animate-none" />{t('正在搜索附近设备…')}
       </div>
+      {request.allowUnfiltered && (
+        <button type="button" aria-pressed={showAll}
+          className="mb-2 min-h-9 shrink-0 self-end px-2 text-xs font-semibold text-text-sub underline"
+          onClick={() => {
+            showAllRef.current = !showAllRef.current
+            setShowAll(showAllRef.current)
+            retry.current()
+          }}>
+          {t(showAll ? '仅显示器械' : '显示全部设备')}
+        </button>
+      )}
       <div className="min-h-0 flex-1 space-y-2 overflow-y-auto overscroll-contain">
         {devices.map((device) => (
           <button key={device.id} type="button" className="flex w-full items-center gap-3 rounded-md border border-border bg-surface px-3 py-3 text-start text-sm shadow-card active:bg-surface-2" onClick={() => finish.current(device)}>

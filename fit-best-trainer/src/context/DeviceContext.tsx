@@ -106,7 +106,7 @@ interface DeviceContextValue {
   allScanning: boolean
   allError: string | null
   scanAllDevices: (acceptAll?: boolean) => Promise<DeviceType | null>
-  connectDevice: (type: DeviceType, deviceId?: string, namePrefix?: string) => Promise<boolean>
+  connectDevice: (type: DeviceType, deviceId?: string, namePrefix?: string, exactName?: boolean) => Promise<boolean>
   disconnectDevice: (type: DeviceType) => void
   startDevice: (type: DeviceType, reset?: boolean) => Promise<void>
   stopDevice: (type: DeviceType, pause?: boolean) => Promise<void>
@@ -391,7 +391,7 @@ export function DeviceProvider({ children }: { children: ReactNode }) {
 
   // Web Bluetooth 需要用户手势；原生端用应用内列表展示扫描结果。
   const pickDevice = useCallback(
-    async (type: DeviceType | 'all', namePrefix?: string, acceptAll = false): Promise<BleDeviceRef | null> => {
+    async (type: DeviceType | 'all', namePrefix?: string, acceptAll = false, exactName = false): Promise<BleDeviceRef | null> => {
       void refreshNavigation()
       if (!supported) {
         if (type !== 'all') setStatus(type, 'failed')
@@ -402,15 +402,18 @@ export function DeviceProvider({ children }: { children: ReactNode }) {
         pendingSearch.current = true
         return new Promise<BleDeviceRef | null>((resolve, reject) => {
           setSearchRequest({
+            allowUnfiltered: type === 'treadmill' && !exactName,
+            autoSelect: exactName && Boolean(namePrefix),
             matches: (device, services) => {
               const name = device.name ?? ''
+              if (exactName && namePrefix) return name.trim().toLowerCase() === namePrefix.toLowerCase()
               const advertised = services.map(normalizeUuid)
               if (type === 'heartRate') return advertised.includes(normalizeUuid(HEART_RATE_SERVICE))
               const kind = matchBleRule(navigationRef.current, name)?.machineType ?? identifyDevice(name)
               if (type === 'all') return kind !== null && kind !== 'pin'
               return kind === type || Boolean(namePrefix && name.startsWith(namePrefix)) ||
-                (!kind && ((type === 'treadmill' && Boolean(name)) ||
-                  advertised.includes(normalizeUuid(FTMS_SERVICE)) || advertised.includes(normalizeUuid(TF_SERVICE))))
+                (!kind && (advertised.includes(normalizeUuid(FTMS_SERVICE)) ||
+                  advertised.includes(normalizeUuid(TF_SERVICE))))
             },
             finish: (device, error) => {
               pendingSearch.current = false
@@ -696,14 +699,20 @@ export function DeviceProvider({ children }: { children: ReactNode }) {
 
   // 连接设备：弹出系统选择器 → 绑定所选设备
   const connectDevice = useCallback(
-    async (type: DeviceType, _deviceId?: string, namePrefix?: string) => {
+    async (type: DeviceType, _deviceId?: string, namePrefix?: string, exactName = false) => {
       try {
-        const device = await pickDevice(type, namePrefix)
+        const device = await pickDevice(type, namePrefix, false, exactName)
         if (!device) return false
+        if (exactName && namePrefix && device.name?.trim().toLowerCase() !== namePrefix.toLowerCase()) {
+          throw new Error('Selected device does not match the equipment label')
+        }
         await attachDevice(type, device)
         return true
       } catch (error) {
-        if (!(error instanceof Error && error.name === 'NotFoundError')) setStatus(type, 'failed')
+        if (!(error instanceof Error && error.name === 'NotFoundError')) {
+          setStatus(type, 'failed')
+          if (exactName) throw error
+        }
         return false
       }
     },
