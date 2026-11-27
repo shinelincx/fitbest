@@ -222,26 +222,22 @@ describe('FTMS 与心率协议', () => {
   })
 })
 
-describe('FITBEST 智能插销协议', () => {
-  it('解析档位、次数、幅度和运动阶段', () => {
-    expect(parsePinPacket(packet(4, 5, 0, 200, 0, 1))).toEqual({
-      plate: 4,
-      reps: 5,
-      romCm: 20,
-      phase: 'pull',
+describe('健焰智能插销协议', () => {
+  const frame = packet(0x22, 0xe3, 4, 1, 5, 1, 44, 0, 20, 80, 1, 0, 0x7f, 0x27)
+  frame[12] = frame.subarray(1, 12).reduce((sum, value) => sum + value, 0) & 0xff
+
+  it('校验帧并按大端解析真实配重和运动数据', () => {
+    const source = packet(0xff, ...frame, 0xff)
+    expect(parsePinPacket(source.subarray(1, 15))).toEqual({
+      plate: 4, reps: 261, distanceMm: 300, speedCmS: 20, battery: 80,
     })
-    expect(parsePinPacket(packet(2, 1, 0, 50, 0, 2))?.phase).toBe('return')
-    expect(parsePinPacket(packet(2, 1, 0, 50, 0, 9))?.phase).toBe('idle')
   })
 
-  it('拒绝短包并正确处理子数组边界', () => {
-    expect(parsePinPacket(packet(1, 2, 3))).toBeNull()
-    const source = packet(0xff, 0xff, 7, 12, 0, 100, 0, 1, 0xff)
-    expect(parsePinPacket(source.subarray(2, 8))).toEqual({
-      plate: 7,
-      reps: 12,
-      romCm: 10,
-      phase: 'pull',
-    })
+  it('拒绝短包、错误报尾和校验失败的数据', () => {
+    expect(parsePinPacket(frame.subarray(0, 13))).toBeNull()
+    expect(parsePinPacket(packet(...frame.subarray(0, 13), 0))).toBeNull()
+    const corrupt = frame.slice()
+    corrupt[2] ^= 1
+    expect(parsePinPacket(corrupt)).toBeNull()
   })
 })

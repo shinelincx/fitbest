@@ -3,7 +3,9 @@ import type { PinBinding, PinMachine } from '../types'
 import { plateToWeight } from '../mock/pinMachines'
 import { getBindingByPinId, removePinBinding, savePinBinding } from '../api'
 import { PIN_NAME_PREFIX, PIN_SERVICE, PIN_STATE_CHAR, parsePinPacket } from '../ble/pin'
-import { bleAdapter, type BleConnection } from '../platform/ble'
+import { bleAdapter, type BleConnection, type BleDeviceRef } from '../platform/ble'
+import type { BluetoothSearchRequest } from '../components/BluetoothSearchDialog'
+import { isNative, isCancellation } from '../platform/runtime'
 
 export type PinStatus = 'idle' | 'scanning' | 'connecting' | 'connected' | 'failed'
 
@@ -20,6 +22,7 @@ export interface PinLive {
   phase: 'idle' | 'pull' | 'return'
   romCm: number
   posCm: number
+  speedCmS: number
   tempoSec: number
   battery: number
   sensorOnline: boolean
@@ -32,6 +35,7 @@ const EMPTY_LIVE: PinLive = {
   phase: 'idle',
   romCm: 0,
   posCm: 0,
+  speedCmS: 0,
   tempoSec: 0,
   battery: 0,
   sensorOnline: false,
@@ -42,9 +46,11 @@ export function useSmartPin(machine: PinMachine | null, ownerId: string | null) 
   const [device, setDevice] = useState<PinDevice | null>(null)
   const [live, setLive] = useState<PinLive>(EMPTY_LIVE)
   const [binding, setBinding] = useState<PinBinding | null>(null)
+  const [searchRequest, setSearchRequest] = useState<BluetoothSearchRequest | null>(null)
+  const connecting = useRef(false)
 
   const plateRef = useRef(machine?.startPlate ?? 1)
-  const repRef = useRef(0)
+  const counter = useRef({ previous: undefined as number | undefined, reps: 0, position: 0, rom: 0, lastRepAt: 0 })
   /** 实时位移波形缓冲（cm，20Hz，保留最近 30s），供 WaveChart 直接绘制 */
   const waveRef = useRef<number[]>([])
   const gattRef = useRef<{ connection?: BleConnection; unsubscribe?: () => void }>({})
@@ -63,18 +69,35 @@ export function useSmartPin(machine: PinMachine | null, ownerId: string | null) 
   // 打开系统蓝牙选择器并连接插销
   const connect = useCallback(
     async (_id?: string) => {
+      if (connecting.current) return
       if (!supported) {
         setStatus('failed')
         return
       }
-      setStatus('connecting')
+      connecting.current = true
+      setStatus('scanning')
       let connection: BleConnection | undefined
       try {
-        const dev = await bleAdapter.requestDevice({
-          services: [PIN_SERVICE],
+        const dev = isNative ? await new Promise<BleDeviceRef | null>((resolve, reject) => {
+          setSearchRequest({
+            matches: (device) => device.name?.toUpperCase().includes(PIN_NAME_PREFIX) ?? false,
+            deviceTypeLabel: () => '智能插销',
+            finish: (selected, error) => {
+              setSearchRequest(null)
+              if (error) reject(error)
+              else resolve(selected)
+            },
+          })
+        }) : await bleAdapter.requestDevice({
+          services: [],
           optionalServices: [PIN_SERVICE],
           namePrefix: PIN_NAME_PREFIX,
         })
+        if (!dev) {
+          setStatus('idle')
+          return
+        }
+        setStatus('connecting')
         connection = await bleAdapter.connect(dev, () => {
           gattRef.current.unsubscribe?.()
           gattRef.current = {}
@@ -83,15 +106,39 @@ export function useSmartPin(machine: PinMachine | null, ownerId: string | null) 
           setStatus('idle')
         })
         const char = await connection.getCharacteristic(PIN_SERVICE, PIN_STATE_CHAR)
+        counter.current = { previous: undefined, reps: 0, position: 0, rom: 0, lastRepAt: 0 }
         const unsubscribe = await char.startNotifications((bytes) => {
           const p = parsePinPacket(bytes)
           if (!p) return
           plateRef.current = p.plate
-          repRef.current = p.reps
+          const state = counter.current
+          const delta = state.previous === undefined ? 0 : p.reps < state.previous ? p.reps : p.reps - state.previous
+          state.previous = p.reps
+          const posCm = p.distanceMm / 10
+          const phase = posCm > state.position ? 'pull' : posCm < state.position && posCm > 0 ? 'return' : 'idle'
+          state.position = posCm
+          state.rom = Math.max(state.rom, posCm)
+          const wave = waveRef.current
+          if (wave.length || posCm > 0) {
+            if (wave.at(-1) !== 0 || posCm > 0) wave.push(Math.min(50, posCm))
+            if (wave.length > 600) wave.shift()
+          }
+          const now = Date.now()
+          const tempoSec = delta > 0 && state.lastRepAt ? Math.round((now - state.lastRepAt) / delta / 100) / 10 : undefined
+          if (delta > 0) state.lastRepAt = now
+          state.reps += delta
+          const { reps, rom } = state
           setLive((prev) => ({
             ...prev,
-            ...p,
-            weight: machine ? plateToWeight(machine, p.plate) : 0,
+            plate: p.plate,
+            reps,
+            phase: p.speedCmS === 0 && phase !== 'return' ? 'idle' : phase,
+            posCm,
+            speedCmS: p.speedCmS,
+            romCm: rom,
+            tempoSec: tempoSec ?? prev.tempoSec,
+            battery: Math.min(100, p.battery),
+            weight: machine && p.plate > 0 ? plateToWeight(machine, p.plate) : 0,
             sensorOnline: true,
           }))
         })
@@ -102,8 +149,14 @@ export function useSmartPin(machine: PinMachine | null, ownerId: string | null) 
         setStatus('connected')
       } catch (e) {
         if (connection) void connection.disconnect().catch(() => undefined)
+        if (isCancellation(e)) {
+          setStatus('idle')
+          return
+        }
         console.warn('插销连接失败：', e)
         setStatus('failed')
+      } finally {
+        connecting.current = false
       }
     },
     [machine, ownerId, supported],
@@ -116,7 +169,7 @@ export function useSmartPin(machine: PinMachine | null, ownerId: string | null) 
     }
     gattRef.current = {}
     if (g?.connection) void g.connection.disconnect().catch(() => undefined)
-    repRef.current = 0
+    counter.current = { previous: undefined, reps: 0, position: 0, rom: 0, lastRepAt: 0 }
     waveRef.current = []
     setDevice(null)
     setLive(EMPTY_LIVE)
@@ -125,26 +178,13 @@ export function useSmartPin(machine: PinMachine | null, ownerId: string | null) 
 
   useEffect(() => () => disconnect(), [disconnect])
 
-  /** 调整插销到指定档位（真机为重新插销后由测距自动上报） */
-  const setPlate = useCallback(
-    (plate: number) => {
-      if (!machine) return
-      const next = Math.max(1, Math.min(machine.plates, plate))
-      plateRef.current = next
-      setLive((prev) => ({
-        ...prev,
-        plate: next,
-        weight: plateToWeight(machine, next),
-      }))
-    },
-    [machine],
-  )
-
   /** 清空当前组计数（开始新组时调用） */
   const resetReps = useCallback(() => {
-    repRef.current = 0
+    counter.current.reps = 0
+    counter.current.rom = 0
+    counter.current.lastRepAt = 0
     waveRef.current = []
-    setLive((prev) => ({ ...prev, reps: 0 }))
+    setLive((prev) => ({ ...prev, reps: 0, romCm: 0, tempoSec: 0 }))
   }, [])
 
   /** 将当前插销绑定到指定器械（覆盖旧绑定） */
@@ -177,10 +217,10 @@ export function useSmartPin(machine: PinMachine | null, ownerId: string | null) 
     live,
     binding,
     waveRef,
+    searchRequest,
     scan: connect,
     connect,
     disconnect,
-    setPlate,
     resetReps,
     bindTo,
     unbind,

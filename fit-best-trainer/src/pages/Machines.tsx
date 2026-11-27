@@ -13,7 +13,7 @@ import DevicePanel from '../components/DevicePanel'
 import ConsolePanel from '../components/ConsolePanel'
 import QuickConnect from '../components/QuickConnect'
 import { isThisWeek } from '../utils/stats'
-import { parseEquipmentLabel } from '../ble/equipmentLabel'
+import { parseNfcEquipmentLabel } from '../ble/equipmentLabel'
 import { readTextOnce } from '../platform/nfc'
 import { isCancellation } from '../platform/runtime'
 
@@ -41,6 +41,10 @@ export default function Machines() {
   const [sessions, setSessions] = useState<MachineSession[]>([])
   const [loading, setLoading] = useState(true)
   const [nfcReading, setNfcReading] = useState(false)
+  const [nfcConnection, setNfcConnection] = useState<{
+    target: NonNullable<ReturnType<typeof parseNfcEquipmentLabel>>
+    failed: boolean
+  } | null>(null)
   const nfcAttempt = useRef<AbortController | null>(null)
   const { devices, connectDevice, machineNavigation } = useDevices()
   const navigationItems = (machineNavigation
@@ -57,8 +61,30 @@ export default function Machines() {
 
   useEffect(() => () => nfcAttempt.current?.abort(), [])
 
+  const connectNfcTarget = useCallback(async (target: NonNullable<ReturnType<typeof parseNfcEquipmentLabel>>) => {
+    const activeMachine = MACHINES.find(({ type }) => devices[type].connected)
+    if (activeMachine) {
+      setNfcConnection(null)
+      toast(t('器械已连接：{{name}}', { name: devices[activeMachine.type].name || t(activeMachine.name) }))
+      return
+    }
+    setNfcConnection({ target, failed: false })
+    try {
+      if (await connectDevice(target.type, undefined, target.name, 'case-sensitive')) {
+        setNfcConnection(null)
+        toast(t('连接成功'))
+        navigate(`/train/${target.type}`)
+        return
+      }
+    } catch (error) {
+      console.warn('NFC 器械连接失败：', error)
+    }
+    setNfcConnection({ target, failed: true })
+  }, [connectDevice, devices, navigate, t, toast])
+
   const handleNfc = useCallback(async () => {
     if (nfcAttempt.current) return
+    setNfcConnection(null)
     const attempt = new AbortController()
     nfcAttempt.current = attempt
     const timeout = window.setTimeout(() => {
@@ -70,16 +96,13 @@ export default function Machines() {
       const text = await readTextOnce(attempt.signal)
       window.clearTimeout(timeout)
       if (attempt.signal.aborted) return
-      const hit = parseEquipmentLabel(text, machineNavigation)
+      const hit = parseNfcEquipmentLabel(text, machineNavigation)
       if (!hit) {
         toast(t('无法识别的器械标签'))
         return
       }
       setNfcReading(false)
-      const device = devices[hit.type]
-      const alreadyConnected = device.connected && (!hit.name || device.name?.toLowerCase() === hit.name.toLowerCase())
-      const connected = alreadyConnected || await connectDevice(hit.type, undefined, hit.name || undefined, Boolean(hit.name))
-      if (!attempt.signal.aborted && connected) navigate(`/train/${hit.type}`)
+      await connectNfcTarget(hit)
     } catch (error) {
       if (isCancellation(error)) return
       console.warn('NFC 读取失败：', error)
@@ -89,7 +112,7 @@ export default function Machines() {
       nfcAttempt.current = null
       setNfcReading(false)
     }
-  }, [connectDevice, devices, machineNavigation, navigate, t, toast])
+  }, [connectNfcTarget, machineNavigation, t, toast])
 
   useEffect(() => {
     fetchSessions().then((s) => {
@@ -172,6 +195,29 @@ export default function Machines() {
       <div className="reveal reveal-3">
         <ConsolePanel />
       </div>
+
+      {nfcConnection && (
+        <div className="fixed inset-0 z-[75] grid place-items-center bg-black/55 px-5">
+          <div role="dialog" aria-modal="true" aria-labelledby="nfc-connect-title" className="w-full max-w-xs rounded-2xl bg-bg p-6 text-center">
+            {!nfcConnection.failed && <Bluetooth size={28} className="mx-auto mb-3 animate-pulse text-primary" aria-hidden="true" />}
+            <h2 id="nfc-connect-title" role="status" className="font-semibold">
+              {t(nfcConnection.failed ? '未能连接器械' : '正在后台连接器械…')}
+            </h2>
+            <p className="mt-2 break-words font-mono text-sm text-text-sub">{nfcConnection.target.name}</p>
+            {nfcConnection.failed && (
+              <div className="mt-5 flex justify-center gap-2">
+                <button type="button" className="min-h-11 rounded-md border border-border px-4 text-sm" onClick={() => setNfcConnection(null)}>
+                  {t('取消')}
+                </button>
+                <button type="button" className="min-h-11 rounded-md bg-text px-4 text-sm font-semibold text-bg"
+                  onClick={() => void handleNfc()}>
+                  {t('重新扫描')}
+                </button>
+              </div>
+            )}
+          </div>
+        </div>
+      )}
 
       {/* NFC 识别中浮层 */}
       {nfcReading && (

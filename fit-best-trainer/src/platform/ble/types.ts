@@ -1,6 +1,8 @@
 export interface BleDeviceRef {
   id: string
   name?: string
+  localName?: string
+  rssi?: number
 }
 
 export interface BleScanOptions {

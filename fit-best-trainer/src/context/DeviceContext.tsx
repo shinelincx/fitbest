@@ -11,6 +11,7 @@ import i18n from '../i18n'
 import { Capacitor } from '@capacitor/core'
 import BluetoothSearchDialog, { type BluetoothSearchRequest } from '../components/BluetoothSearchDialog'
 import { identifyDevice } from '../ble/identify'
+import { MACHINE_MAP } from '../mock/data'
 import { fetchMachineNavigation, isResistanceDisabled, matchBleRule, readMachineNavigation, type MachineNavigation } from '../api/machineNavigation'
 import { CARDIO_DATA_REQUEST, CARDIO_LIMIT_REQUEST, CARDIO_STATUS_REQUEST, parsePrivateCardioPacket, privateCardioControl, privateCardioResistance } from '../ble/privateCardio'
 import {
@@ -106,7 +107,7 @@ interface DeviceContextValue {
   allScanning: boolean
   allError: string | null
   scanAllDevices: (acceptAll?: boolean) => Promise<DeviceType | null>
-  connectDevice: (type: DeviceType, deviceId?: string, namePrefix?: string, exactName?: boolean) => Promise<boolean>
+  connectDevice: (type: DeviceType, deviceId?: string, namePrefix?: string, exactName?: boolean | 'case-sensitive') => Promise<boolean>
   disconnectDevice: (type: DeviceType) => void
   startDevice: (type: DeviceType, reset?: boolean) => Promise<void>
   stopDevice: (type: DeviceType, pause?: boolean) => Promise<void>
@@ -391,7 +392,7 @@ export function DeviceProvider({ children }: { children: ReactNode }) {
 
   // Web Bluetooth 需要用户手势；原生端用应用内列表展示扫描结果。
   const pickDevice = useCallback(
-    async (type: DeviceType | 'all', namePrefix?: string, acceptAll = false, exactName = false): Promise<BleDeviceRef | null> => {
+    async (type: DeviceType | 'all', namePrefix?: string, acceptAll = false, exactName: boolean | 'case-sensitive' = false): Promise<BleDeviceRef | null> => {
       void refreshNavigation()
       if (!supported) {
         if (type !== 'all') setStatus(type, 'failed')
@@ -400,16 +401,24 @@ export function DeviceProvider({ children }: { children: ReactNode }) {
       if (Capacitor.isNativePlatform()) {
         if (pendingSearch.current) return null
         pendingSearch.current = true
+        const identify = (name: string) => matchBleRule(navigationRef.current, name)?.machineType ?? identifyDevice(name)
         return new Promise<BleDeviceRef | null>((resolve, reject) => {
           setSearchRequest({
             allowUnfiltered: type === 'treadmill' && !exactName,
             autoSelect: exactName && Boolean(namePrefix),
+            deviceTypeLabel: (device) => {
+              if (type === 'heartRate') return '心率带'
+              const kind = identify(device.name ?? '')
+              if (kind === 'pin') return '智能插销'
+              return kind ? MACHINE_MAP[kind].name : undefined
+            },
             matches: (device, services) => {
               const name = device.name ?? ''
+              if (exactName === 'case-sensitive' && namePrefix) return name === namePrefix || device.localName === namePrefix
               if (exactName && namePrefix) return name.trim().toLowerCase() === namePrefix.toLowerCase()
               const advertised = services.map(normalizeUuid)
               if (type === 'heartRate') return advertised.includes(normalizeUuid(HEART_RATE_SERVICE))
-              const kind = matchBleRule(navigationRef.current, name)?.machineType ?? identifyDevice(name)
+              const kind = identify(name)
               if (type === 'all') return kind !== null && kind !== 'pin'
               return kind === type || Boolean(namePrefix && name.startsWith(namePrefix)) ||
                 (!kind && (advertised.includes(normalizeUuid(FTMS_SERVICE)) ||
@@ -699,11 +708,14 @@ export function DeviceProvider({ children }: { children: ReactNode }) {
 
   // 连接设备：弹出系统选择器 → 绑定所选设备
   const connectDevice = useCallback(
-    async (type: DeviceType, _deviceId?: string, namePrefix?: string, exactName = false) => {
+    async (type: DeviceType, _deviceId?: string, namePrefix?: string, exactName: boolean | 'case-sensitive' = false) => {
       try {
         const device = await pickDevice(type, namePrefix, false, exactName)
         if (!device) return false
-        if (exactName && namePrefix && device.name?.trim().toLowerCase() !== namePrefix.toLowerCase()) {
+        const matchesName = exactName === 'case-sensitive'
+          ? device.name === namePrefix || device.localName === namePrefix
+          : device.name?.trim().toLowerCase() === namePrefix?.toLowerCase()
+        if (exactName && namePrefix && !matchesName) {
           throw new Error('Selected device does not match the equipment label')
         }
         await attachDevice(type, device)

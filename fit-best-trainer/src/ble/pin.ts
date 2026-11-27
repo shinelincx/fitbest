@@ -1,30 +1,33 @@
 import type { BleBuffer } from './ftms'
 
-export const PIN_SERVICE = '0000fd00-0000-1000-8000-00805f9b34fb'
-export const PIN_STATE_CHAR = '0000fd01-0000-1000-8000-00805f9b34fb'
-export const PIN_NAME_PREFIX = 'FITBEST-PIN'
+export const PIN_SERVICE = 'fff0'
+export const PIN_STATE_CHAR = '6e400003-b5a3-f393-e0a9-e50e24dcca9e'
+export const PIN_NAME_PREFIX = 'ZTYNLLZ'
 
 export interface PinPacket {
   plate: number
   reps: number
-  romCm: number
-  phase: 'idle' | 'pull' | 'return'
+  distanceMm: number
+  speedCmS: number
+  battery: number
 }
 
-/**
- * 插销上行数据帧（正式 UUID 与帧格式仍需固件确认）：
- * [0] 档位，[1..2] 次数 uint16 LE，[3..4] 幅度 mm uint16 LE，[5] 运动状态。
- */
 export function parsePinPacket(input: BleBuffer): PinPacket | null {
   const view = ArrayBuffer.isView(input)
     ? new DataView(input.buffer, input.byteOffset, input.byteLength)
     : new DataView(input)
-  if (view.byteLength < 6) return null
-  const phaseFlag = view.getUint8(5)
+  if (view.byteLength !== 14 || view.getUint8(0) !== 0x22 ||
+    view.getUint8(1) !== 0xe3 || view.getUint8(13) !== 0x27) return null
+
+  let checksum = 0
+  for (let index = 1; index <= 11; index++) checksum += view.getUint8(index)
+  if ((checksum & 0xff) !== view.getUint8(12)) return null
+
   return {
-    plate: view.getUint8(0),
-    reps: view.getUint16(1, true),
-    romCm: Math.round(view.getUint16(3, true) / 10),
-    phase: phaseFlag === 1 ? 'pull' : phaseFlag === 2 ? 'return' : 'idle',
+    plate: view.getUint8(2),
+    reps: view.getUint16(3),
+    distanceMm: view.getUint16(5),
+    speedCmS: view.getUint16(7),
+    battery: view.getUint8(9),
   }
 }

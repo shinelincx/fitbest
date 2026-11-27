@@ -9,6 +9,7 @@ const SEARCH_HINT_DELAY_MS = 30_000
 export interface BluetoothSearchRequest {
   allowUnfiltered?: boolean
   autoSelect?: boolean
+  deviceTypeLabel?: (device: BleDeviceRef) => string | undefined
   matches: (device: BleDeviceRef, services: string[]) => boolean
   finish: (device: BleDeviceRef | null, error?: unknown) => void
 }
@@ -46,10 +47,23 @@ export default function BluetoothSearchDialog({ request }: { request: BluetoothS
           void complete(device)
           return
         }
-        setDevices((previous) => previous.some((item) => item.id === device.id) ? previous : [...previous, device])
-      })
+        setDevices((previous) => {
+          const index = previous.findIndex((item) => item.id === device.id)
+          if (index < 0) return [...previous, device]
+          const current = previous[index]
+          const rssi = device.rssi ?? current.rssi
+          const name = device.name || current.name
+          if (rssi === current.rssi && name === current.name) return previous
+          const updated = previous.slice()
+          updated[index] = { ...current, ...device, name, rssi }
+          return updated
+        })
+      }, !request.autoSelect)
       void scan.then(() => {
-        if (!finished && currentRound === round) hintTimer = window.setTimeout(() => setShowRetry(true), SEARCH_HINT_DELAY_MS)
+        if (!finished && currentRound === round) hintTimer = window.setTimeout(() => {
+          if (request.autoSelect) void complete(null)
+          else setShowRetry(true)
+        }, SEARCH_HINT_DELAY_MS)
       }, () => complete(null))
     }
 
@@ -101,6 +115,8 @@ export default function BluetoothSearchDialog({ request }: { request: BluetoothS
     }
   }, [request])
 
+  if (request.autoSelect) return null
+
   return (
     <dialog
       ref={dialog}
@@ -127,10 +143,17 @@ export default function BluetoothSearchDialog({ request }: { request: BluetoothS
         </button>
       )}
       <div className="min-h-0 flex-1 space-y-2 overflow-y-auto overscroll-contain">
-        {devices.map((device) => (
+        {devices.slice().sort((a, b) => (b.rssi ?? -Infinity) - (a.rssi ?? -Infinity)).map((device) => (
           <button key={device.id} type="button" className="flex w-full items-center gap-3 rounded-md border border-border bg-surface px-3 py-3 text-start text-sm shadow-card active:bg-surface-2" onClick={() => finish.current(device)}>
             <span className="grid size-9 shrink-0 place-items-center rounded-full bg-surface-2 text-text-sub"><Bluetooth size={17} /></span>
-            <span className="min-w-0 flex-1 truncate font-semibold">{device.name || t('未知设备')}</span>
+            <span className="min-w-0 flex-1">
+              <span className="block truncate font-semibold">{device.name || t('未知设备')}</span>
+              <span className="block truncate text-xs tabular-nums text-text-sub">
+                {t(request.deviceTypeLabel?.(device) ?? '未知类型')}
+                {' · '}
+                {device.rssi === undefined ? '—' : `${device.rssi} dBm`}
+              </span>
+            </span>
             <span className="shrink-0 rounded-full bg-text px-4 py-1.5 text-xs font-semibold text-bg">{t('连接')}</span>
           </button>
         ))}

@@ -9,8 +9,6 @@ import {
   CheckCircle2,
   Link2,
   Loader2,
-  Minus,
-  Plus,
   Radio,
   RotateCcw,
   Share2,
@@ -22,7 +20,7 @@ import {
 } from 'lucide-react'
 import { fetchStrengthSessions, saveStrengthSession } from '../api'
 import type { StrengthSession, StrengthSet } from '../types'
-import { PIN_MACHINE_MAP, PIN_MACHINES, plateToWeight } from '../mock/pinMachines'
+import { PIN_MACHINE_MAP, PIN_MACHINES } from '../mock/pinMachines'
 import { EXERCISE_MAP } from '../mock/strength'
 import WaveChart from '../components/WaveChart'
 import { exercisePR, formatVolume, summarizeStrength } from '../utils/strength'
@@ -30,6 +28,7 @@ import { formatTime } from '../utils/format'
 import { formatDate } from '../utils/stats'
 import { useToast } from '../components/Toast'
 import { useSmartPin } from '../hooks/useSmartPin'
+import BluetoothSearchDialog from '../components/BluetoothSearchDialog'
 import { useAuth } from '../context/AuthContext'
 import { currentUserId } from '../utils/auth'
 import ShareSheet from '../components/ShareSheet'
@@ -321,6 +320,7 @@ export default function PinTrain() {
 
   return (
     <div className="flex min-h-full flex-col">
+      {pin.searchRequest && <BluetoothSearchDialog request={pin.searchRequest} />}
       <header className="sticky top-0 z-20 flex items-center gap-3 border-b border-border bg-bg/92 px-4 py-3 backdrop-blur-xl">
         <button
           onClick={() => navigate('/strength')}
@@ -561,27 +561,7 @@ export default function PinTrain() {
                 )}
               </div>
 
-              <div className="mt-3 flex items-center gap-2">
-                <span className="text-[12px] text-text-sub">{t('调整档位')}</span>
-                <button
-                  onClick={() => pin.setPlate(pin.live.plate - 1)}
-                  disabled={pin.live.plate <= 1}
-                  className="flex h-8 w-8 items-center justify-center rounded-sm bg-surface-2 disabled:opacity-30"
-                >
-                  <Minus size={14} />
-                </button>
-                <span className="min-w-[52px] text-center font-mono text-[13px]">
-                  {plateToWeight(machine, pin.live.plate)} kg
-                </span>
-                <button
-                  onClick={() => pin.setPlate(pin.live.plate + 1)}
-                  disabled={pin.live.plate >= machine.plates}
-                  className="flex h-8 w-8 items-center justify-center rounded-sm bg-surface-2 disabled:opacity-30"
-                >
-                  <Plus size={14} />
-                </button>
-                <span className="ml-auto text-[11px] text-text-sub">{t('真机请直接移动插销')}</span>
-              </div>
+              <p className="mt-3 text-xs text-text-sub">{t('真机请直接移动插销')}</p>
             </section>
 
             {/* 本次次数 */}
@@ -597,6 +577,8 @@ export default function PinTrain() {
                 <div className="grid grid-cols-2 gap-x-5 gap-y-1 text-right text-[12px]">
                   <span className="text-text-sub">{t('动作幅度')}</span>
                   <span className="font-mono">{pin.live.romCm || '—'} cm</span>
+                  <span className="text-text-sub">{t('拉动速度')}</span>
+                  <span className="font-mono">{pin.live.sensorOnline ? pin.live.speedCmS : '—'} cm/s</span>
                   <span className="text-text-sub">{t('单次节奏')}</span>
                   <span className="font-mono">{pin.live.tempoSec || '—'} s</span>
                   <span className="text-text-sub">{t('已完成组')}</span>

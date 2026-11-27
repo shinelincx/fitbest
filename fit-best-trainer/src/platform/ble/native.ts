@@ -27,10 +27,10 @@ async function ensureReady(): Promise<void> {
   }
 }
 
-export async function scanNearbyDevices(onDevice: (device: BleDeviceRef, services: string[]) => void) {
+export async function scanNearbyDevices(onDevice: (device: BleDeviceRef, services: string[]) => void, allowDuplicates = false) {
   await ensureReady()
-  await BleClient.requestLEScan({}, ({ device, localName, uuids }) => {
-    onDevice({ id: device.deviceId, name: device.name || localName }, uuids ?? [])
+  await BleClient.requestLEScan({ allowDuplicates }, ({ device, localName, uuids, rssi }) => {
+    onDevice({ id: device.deviceId, name: device.name || localName, localName, rssi }, uuids ?? [])
   })
   return () => BleClient.stopLEScan()
 }

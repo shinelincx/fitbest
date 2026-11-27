@@ -14,6 +14,17 @@ const modelNames: Partial<Record<string, MachineType>> = {
   'uprightbike u3': 'upright', 'stairclimber c9': 'stair',
 }
 
+export function parseNfcEquipmentLabel(raw: string, navigation: MachineNavigation | null) {
+  const marker = 'from=nfc&'
+  const start = raw.indexOf(marker)
+  if (start < 0) return null
+  const params = new URLSearchParams(raw.slice(start + marker.length))
+  const name = params.get('name')
+  if (!name?.trim()) return null
+  const label = parseEquipmentLabel(JSON.stringify({ name, stype: params.get('stype') }), navigation)
+  return label ? { type: label.type, name } : null
+}
+
 export function parseEquipmentLabel(raw: string, navigation: MachineNavigation | null) {
   const text = raw.trim()
   let name = text
