@@ -15,6 +15,9 @@ if [[ ! -L $path/.fitbest-current && -f $path/.env ]] && ! cmp -s "$path/.env" "
 fi
 
 export FITBEST_IMAGE_NAMESPACE="$namespace" FITBEST_RELEASE_TAG="$tag"
+# Nginx runs on the Docker host and reaches Spring through this bridge gateway.
+FITBEST_DEPLOY_PROXY_GATEWAY=$(docker network inspect fitbest-net --format '{{(index .IPAM.Config 0).Gateway}}' 2>/dev/null || true)
+export FITBEST_DEPLOY_PROXY_GATEWAY
 compose=(docker compose --project-directory "$path" --project-name "$project" --env-file "$release/.env" -f "$release/docker-compose.yml" -f "$release/docker-compose.release.yml" -f "$release/docker-compose.registry.yml")
 "${compose[@]}" config --quiet
 if ! docker volume inspect "${project}_pg_data" "${project}_redis_data" > /dev/null; then

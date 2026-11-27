@@ -259,7 +259,7 @@ public class AuthService {
 
     // ---------- 登录 / 注册 ----------
 
-    private Map<String, Object> finishLogin(UUID userId, String device, String ip) {
+    Map<String, Object> finishLogin(UUID userId, String device, String ip) {
         TokenService.TokenPair pair = tokens.issue(userId, device, ip);
         UserWithProfile profile = loadProfile(userId);
         if (profile == null) {

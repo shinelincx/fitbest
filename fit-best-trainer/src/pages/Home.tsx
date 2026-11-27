@@ -16,6 +16,8 @@ import { useDevices } from '../context/DeviceContext'
 import { useAuth } from '../context/AuthContext'
 import Avatar from '../components/Avatar'
 import ScanSheet from '../components/ScanSheet'
+import DeviceLoginDialog, { parseDeviceLoginQr } from '../components/DeviceLoginDialog'
+import { hasAccessFor } from '../api/client'
 import { parseEquipmentLabel } from '../ble/equipmentLabel'
 import { useToast } from '../components/Toast'
 import { WeekBars } from '../components/Charts'
@@ -57,6 +59,7 @@ function GoalLine({ label, current, target, unit }: { label: string; current: nu
 export default function Home() {
   const { t } = useTranslation()
   const [scanOpen, setScanOpen] = useState(false)
+  const [deviceLogin, setDeviceLogin] = useState<{ scanId: string; userId: string | null } | null>(null)
   const { devices, connectDevice, machineNavigation } = useDevices()
   const { user, sessionExpired } = useAuth()
   const overview = useTrainingOverview(user?.id ?? null, sessionExpired)
@@ -65,6 +68,15 @@ export default function Home() {
 
   const handleScanned = useCallback(async (raw: string) => {
     setScanOpen(false)
+    const login = parseDeviceLoginQr(raw)
+    if (login) {
+      if (login.scanId) {
+        setDeviceLogin({ scanId: login.scanId, userId: user && hasAccessFor(user.id) ? user.id : null })
+      } else {
+        toast(t('无法识别的登录二维码'))
+      }
+      return
+    }
     const hit = parseEquipmentLabel(raw, machineNavigation)
     if (!hit) {
       toast(t('无法识别的器械标签'))
@@ -79,7 +91,12 @@ export default function Home() {
     } catch {
       toast(t('连接失败，请重试'))
     }
-  }, [connectDevice, devices, machineNavigation, navigate, t, toast])
+  }, [connectDevice, devices, machineNavigation, navigate, t, toast, user])
+
+  const onDeviceLoginConfirmed = useCallback(() => {
+    setDeviceLogin(null)
+    toast(t('已授权设备登录'))
+  }, [t, toast])
 
   const { week, weekly, dayCounts, todayIndex, time: now, loading } = overview
   const recent = overview.all.slice(0, 3)
@@ -336,11 +353,24 @@ export default function Home() {
         </div>
       </div>
 
-      <ScanSheet
-        open={scanOpen}
-        onClose={() => setScanOpen(false)}
-        onScanned={handleScanned}
-      />
+      {scanOpen && <ScanSheet onClose={() => setScanOpen(false)} onScanned={handleScanned} />}
+      {deviceLogin && (
+        <DeviceLoginDialog
+          scanId={deviceLogin.scanId}
+          userId={deviceLogin.userId === user?.id ? deviceLogin.userId : null}
+          onClose={() => setDeviceLogin(null)}
+          onSignIn={() => {
+            setDeviceLogin(null)
+            if (isNative) {
+              void openExternal(import.meta.env.VITE_PUBLIC_WEB_URL || 'https://cloud.thinkfiter.com/fitbest/')
+                .catch(() => toast(t('暂时无法完成设备登录，请重试。')))
+            } else {
+              navigate('/login')
+            }
+          }}
+          onConfirmed={onDeviceLoginConfirmed}
+        />
+      )}
     </div>
   )
 }

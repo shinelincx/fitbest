@@ -1,5 +1,5 @@
 import { useTranslation } from 'react-i18next'
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useId, useRef, useState } from 'react'
 import { X } from 'lucide-react'
 import type { DeviceType } from '../context/DeviceContext'
 import { MACHINES } from '../mock/data'
@@ -11,44 +11,37 @@ import {
 } from '@capacitor/barcode-scanner'
 import { useNativeBack } from '../platform/NativeRuntime'
 import { NATIVE_BACKGROUND_EVENT, isCancellation, isNative } from '../platform/runtime'
+import { Html5Qrcode, Html5QrcodeSupportedFormats } from 'html5-qrcode'
 
 export default function ScanSheet({
-  open,
   onClose,
   onScanned,
 }: {
-  open: boolean
   onClose: () => void
   onScanned: (raw: string) => void
 }) {
   const { t } = useTranslation()
-  const videoRef = useRef<HTMLVideoElement | null>(null)
-  const streamRef = useRef<MediaStream | null>(null)
-  const detectorRef = useRef<{ detect: (s: HTMLVideoElement) => Promise<Array<{ rawValue: string }>> } | null>(null)
-  const rafRef = useRef<number | null>(null)
+  const cameraId = useId()
   const [cameraOk, setCameraOk] = useState<boolean | null>(null)
   const [picking, setPicking] = useState(false)
   const closeRef = useRef(onClose)
   const scannedRef = useRef(onScanned)
   closeRef.current = onClose
   scannedRef.current = onScanned
-  useNativeBack(open, onClose)
+  useNativeBack(true, onClose)
 
   useEffect(() => {
-    if (!open) return
-
     let cancelled = false
+    let webScanner: Html5Qrcode | undefined
     setPicking(false)
     setCameraOk(null)
-
-    const BD = (window as unknown as { BarcodeDetector?: new (opts?: { formats: string[] }) => unknown }).BarcodeDetector
 
     async function startCamera() {
       if (isNative) {
         try {
           const result = await CapacitorBarcodeScanner.scanBarcode({
             hint: CapacitorBarcodeScannerTypeHint.QR_CODE,
-            scanInstructions: t('将器械二维码对准框内'),
+            scanInstructions: t('将二维码对准框内'),
             scanOrientation: CapacitorBarcodeScannerScanOrientation.PORTRAIT,
             cameraDirection: CapacitorBarcodeScannerCameraDirection.BACK,
           })
@@ -63,52 +56,39 @@ export default function ScanSheet({
         }
         return
       }
-      if (!BD || !navigator.mediaDevices?.getUserMedia) {
+      if (!navigator.mediaDevices?.getUserMedia) {
         setCameraOk(false)
         return
       }
       try {
-        const stream = await navigator.mediaDevices.getUserMedia({
-          video: { facingMode: { ideal: 'environment' } },
-          audio: false,
+        webScanner = new Html5Qrcode(cameraId, {
+          formatsToSupport: [Html5QrcodeSupportedFormats.QR_CODE],
+          verbose: false,
         })
+        await webScanner.start({ facingMode: 'environment' }, {
+          fps: 4,
+          videoConstraints: { facingMode: { ideal: 'environment' } },
+          qrbox: (width, height) => {
+            const size = Math.floor(Math.min(width, height) * 0.7)
+            return { width: size, height: size }
+          },
+        }, handleRaw, undefined)
         if (cancelled) {
-          stream.getTracks().forEach((t) => t.stop())
+          await stopWebScanner()
           return
         }
-        streamRef.current = stream
-        const detector = new BD({ formats: ['qr_code'] }) as {
-          detect: (s: HTMLVideoElement) => Promise<Array<{ rawValue: string }>>
-        }
-        detectorRef.current = detector
-        const video = videoRef.current
-        if (video) {
-          video.srcObject = stream
-          await video.play().catch(() => undefined)
-        }
         setCameraOk(true)
-        scanLoop()
       } catch {
-        setCameraOk(false)
+        if (!cancelled) setCameraOk(false)
       }
     }
 
-    async function scanLoop() {
-      if (cancelled) return
-      const video = videoRef.current
-      const detector = detectorRef.current
-      if (video && detector && video.readyState >= 2) {
-        try {
-          const codes = await detector.detect(video)
-          if (codes?.[0]?.rawValue) {
-            handleRaw(codes[0].rawValue)
-            return
-          }
-        } catch {
-          /* 重试 */
-        }
+    async function stopWebScanner() {
+      if (webScanner?.isScanning) {
+        const scanner = webScanner
+        webScanner = undefined
+        await scanner.stop().catch(() => undefined)
       }
-      rafRef.current = window.setTimeout(scanLoop, 300) as unknown as number
     }
 
     function handleRaw(raw: string) {
@@ -123,21 +103,16 @@ export default function ScanSheet({
       window.addEventListener(NATIVE_BACKGROUND_EVENT, closeOnBackground)
       document.addEventListener('visibilitychange', closeOnHidden)
     }
-    startCamera()
+    const start = window.setTimeout(() => void startCamera(), 0)
 
     return () => {
       cancelled = true
+      window.clearTimeout(start)
       window.removeEventListener(NATIVE_BACKGROUND_EVENT, closeOnBackground)
       document.removeEventListener('visibilitychange', closeOnHidden)
-      if (rafRef.current) window.clearTimeout(rafRef.current)
-      if (streamRef.current) {
-        streamRef.current.getTracks().forEach((t) => t.stop())
-        streamRef.current = null
-      }
+      void stopWebScanner()
     }
-  }, [open, t])
-
-  if (!open) return null
+  }, [cameraId, t])
 
   function pickMachine(type: DeviceType, _name: string) {
     onScanned(type)
@@ -150,7 +125,7 @@ export default function ScanSheet({
         onClick={(e) => e.stopPropagation()}
       >
         <div className="mb-4 flex items-center justify-between">
-          <p className="font-display text-lg font-bold">{t('扫码连接器械')}</p>
+          <p className="font-display text-lg font-bold">{t('扫码')}</p>
           <button
             type="button"
             onClick={onClose}
@@ -161,38 +136,31 @@ export default function ScanSheet({
           </button>
         </div>
 
-        {cameraOk === null && (
+        {isNative && cameraOk === null && (
           <div className="flex h-64 items-center justify-center rounded-xl bg-surface text-sm text-text-sub">
             {t('正在启动摄像头…')}
           </div>
         )}
 
-        {cameraOk === true && (
-          <div className="relative overflow-hidden rounded-xl bg-black">
-            <video
-              ref={videoRef}
-              className="h-64 w-full object-cover"
-              playsInline
-              muted
-            />
-            <div className="pointer-events-none absolute inset-0 flex items-center justify-center">
-              <div className="h-40 w-40 rounded-lg border-2 border-primary/80" />
-            </div>
-            <p className="absolute bottom-2 left-1/2 -translate-x-1/2 rounded-full bg-black/60 px-3 py-1 text-[12px] text-white">
-              {t('将器械二维码对准框内')}
-            </p>
+        {!isNative && (
+          <div hidden={cameraOk === false} className="relative overflow-hidden rounded-xl bg-black">
+            <div id={cameraId} className="min-h-64 w-full" />
+            {cameraOk === null ? (
+              <p role="status" className="absolute inset-0 grid place-items-center bg-surface text-sm text-text-sub">
+                {t('正在启动摄像头…')}
+              </p>
+            ) : (
+              <p className="pointer-events-none absolute bottom-2 left-1/2 -translate-x-1/2 rounded-full bg-black/60 px-3 py-1 text-[12px] text-white">
+                {t('将二维码对准框内')}
+              </p>
+            )}
           </div>
         )}
-
 
         {(cameraOk === false || picking) && (
           <div className="mt-4">
             <p className="mb-2 text-[13px] text-text-sub">
-              {cameraOk === false
-                ? isNative
-                  ? t('无法启动扫码，请检查相机权限或手动选择器械')
-                  : t('当前浏览器不支持摄像头扫码，请手动选择器械')
-                : t('手动选择器械')}
+              {t(cameraOk === false ? '无法启动扫码，请检查相机权限或手动选择器械' : '手动选择器械')}
             </p>
             <div className="grid grid-cols-2 gap-2">
               {MACHINES.map((m) => (

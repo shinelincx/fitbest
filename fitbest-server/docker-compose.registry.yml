@@ -1,6 +1,8 @@
 services:
   fitbest-server:
     image: ${FITBEST_IMAGE_NAMESPACE:-ghcr.io/shinelincx/fitbest}-server:${FITBEST_RELEASE_TAG:?Set FITBEST_RELEASE_TAG}
+    environment:
+      FITBEST_DEVICE_LOGIN_TRUSTED_PROXIES: "${FITBEST_DEVICE_LOGIN_TRUSTED_PROXIES:-${FITBEST_DEPLOY_PROXY_GATEWAY:-}}"
   web-bundle:
     image: ${FITBEST_IMAGE_NAMESPACE:-ghcr.io/shinelincx/fitbest}-web:${FITBEST_RELEASE_TAG:?Set FITBEST_RELEASE_TAG}
   postgres:
